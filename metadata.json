@@ -1,0 +1,5 @@
+{
+  "name": "Virtual Sommelier",
+  "description": "A virtual sommelier app that generates wine tasting notes, ratings, and food pairing suggestions based on a wine name.",
+  "requestFramePermissions": []
+}
