@@ -218,7 +218,7 @@ export default function App() {
             虛擬侍酒師
           </h1>
           <p className="text-neutral-400 max-w-md mx-auto font-light text-sm md:text-base tracking-wide">
-            輸入酒名，即刻為你送上品酒筆記、專業評分同埋完美配餐建議。
+            輸入酒名或上傳圖片，即刻為你送上品酒筆記、專業評分同埋完美配餐建議。
           </p>
         </motion.div>
 
