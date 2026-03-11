@@ -1,25 +1,35 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2 } from 'lucide-react';
-import { generateWineNotes } from './services/geminiService';
+import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera } from 'lucide-react';
+import { generateWineNotes, extractWineInfoFromImage } from './services/geminiService';
 import { WineData } from './types';
+import { WineCategoryLogo } from './components/WineCategoryLogo';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
 export default function App() {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [wineData, setWineData] = useState<WineData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isGrapesExpanded, setIsGrapesExpanded] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const getWineImage = (type: string) => {
-    switch (type) {
-      case 'red': return 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?auto=format&fit=crop&w=600&q=80';
-      case 'white': return 'https://images.unsplash.com/photo-1504279577054-acfeccf8fc52?auto=format&fit=crop&w=600&q=80';
-      case 'sparkling': return 'https://images.unsplash.com/photo-1599940824399-b87987ceb72a?auto=format&fit=crop&w=600&q=80';
-      case 'rose': return 'https://images.unsplash.com/photo-1559564484-e48b3e040ff4?auto=format&fit=crop&w=600&q=80';
-      case 'sweet': return 'https://images.unsplash.com/photo-1572913017567-02f0649bc4fd?auto=format&fit=crop&w=600&q=80';
-      case 'fortified': return 'https://images.unsplash.com/photo-1584916201218-f4242ceb4809?auto=format&fit=crop&w=600&q=80';
-      default: return 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=600&q=80';
-    }
+  const getFallbackCountryCode = (region: string) => {
+    const lowerRegion = region.toLowerCase();
+    if (lowerRegion.includes('france') || lowerRegion.includes('法國')) return 'fr';
+    if (lowerRegion.includes('italy') || lowerRegion.includes('義大利') || lowerRegion.includes('意大利')) return 'it';
+    if (lowerRegion.includes('spain') || lowerRegion.includes('西班牙')) return 'es';
+    if (lowerRegion.includes('usa') || lowerRegion.includes('美國') || lowerRegion.includes('california')) return 'us';
+    if (lowerRegion.includes('australia') || lowerRegion.includes('澳洲')) return 'au';
+    if (lowerRegion.includes('chile') || lowerRegion.includes('智利')) return 'cl';
+    if (lowerRegion.includes('argentina') || lowerRegion.includes('阿根廷')) return 'ar';
+    if (lowerRegion.includes('south africa') || lowerRegion.includes('南非')) return 'za';
+    if (lowerRegion.includes('new zealand') || lowerRegion.includes('紐西蘭') || lowerRegion.includes('新西蘭')) return 'nz';
+    if (lowerRegion.includes('germany') || lowerRegion.includes('德國')) return 'de';
+    if (lowerRegion.includes('portugal') || lowerRegion.includes('葡萄牙')) return 'pt';
+    if (lowerRegion.includes('china') || lowerRegion.includes('中國')) return 'cn';
+    if (lowerRegion.includes('japan') || lowerRegion.includes('日本')) return 'jp';
+    return null;
   };
 
   const getWineTypeName = (type: string) => {
@@ -27,6 +37,7 @@ export default function App() {
       case 'red': return '紅酒';
       case 'white': return '白酒';
       case 'sparkling': return '氣泡酒';
+      case 'champagne': return '香檳';
       case 'rose': return '玫瑰酒';
       case 'sweet': return '甜酒';
       case 'fortified': return '加烈酒';
@@ -41,6 +52,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     setWineData(null);
+    setIsGrapesExpanded(false);
 
     try {
       const data = await generateWineNotes(query);
@@ -53,11 +65,145 @@ export default function App() {
     }
   };
 
+  const processImageFile = async (file: File) => {
+    setIsLoading(true);
+    setError(null);
+    setWineData(null);
+    setIsGrapesExpanded(false);
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          const mimeType = base64data.split(';')[0].split(':')[1];
+          const base64Image = base64data.split(',')[1];
+
+          const extractedInfo = await extractWineInfoFromImage(base64Image, mimeType);
+          
+          const parts = [];
+          if (extractedInfo.winery && extractedInfo.winery !== "null") parts.push(extractedInfo.winery);
+          if (extractedInfo.wine_name && extractedInfo.wine_name !== "null") parts.push(extractedInfo.wine_name);
+          if (extractedInfo.vintage && extractedInfo.vintage !== "null") parts.push(extractedInfo.vintage);
+          if (extractedInfo.region && extractedInfo.region !== "null") parts.push(extractedInfo.region);
+          if (extractedInfo.country && extractedInfo.country !== "null") parts.push(extractedInfo.country);
+          
+          const newQuery = parts.join(' ');
+          
+          if (newQuery) {
+            setQuery(newQuery);
+            const data = await generateWineNotes(newQuery);
+            setWineData(data);
+          } else {
+            setError("無法從圖片中辨識出酒款資訊，請重新拍攝或手動輸入。");
+          }
+        } catch (err) {
+          console.error(err);
+          setError("分析圖片時發生錯誤，請稍後再試。");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      reader.onerror = () => {
+        setError("讀取圖片時發生錯誤。");
+        setIsLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setError("處理圖片時發生錯誤。");
+      setIsLoading(false);
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processImageFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      processImageFile(file);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5] selection:bg-wine-900 selection:text-white pb-20">
+    <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5] selection:bg-wine-900 selection:text-white pb-20 relative overflow-hidden">
+      {/* Global Background Gradient */}
+      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,_#6a1a1a_0%,_transparent_75%)] opacity-80 pointer-events-none"></div>
+      
+      {/* Sommelier Silhouette */}
+      <svg viewBox="0 0 500 500" className="absolute bottom-0 right-0 w-[40rem] h-[40rem] md:w-[60rem] md:h-[60rem] opacity-[0.06] text-white pointer-events-none transform translate-x-[5%] translate-y-[5%]" fill="currentColor">
+        {/* Shirt (Skin/Arms) */}
+        <g opacity="0.4">
+          {/* Head */}
+          <ellipse cx="280" cy="55" rx="38" ry="48" />
+          {/* Neck */}
+          <rect x="258" y="90" width="44" height="30" />
+          {/* Left Arm (Viewer Left) */}
+          <path d="M 230 130 C 170 140, 120 180, 100 260 C 100 280, 130 280, 140 260 C 150 220, 150 180, 160 150 C 170 140, 190 160, 200 180 L 220 150 Z" />
+          {/* Right Arm (Viewer Right) */}
+          <path d="M 330 130 C 390 140, 440 180, 460 260 C 470 300, 440 340, 390 360 L 180 390 L 180 360 L 380 330 C 420 310, 420 260, 400 220 L 330 170 Z" />
+          {/* Shirt Body (V-Neck area) */}
+          <path d="M 230 120 L 280 250 L 330 120 Z" />
+        </g>
+
+        {/* Vest */}
+        <g opacity="0.8">
+          <path d="M 230 120 L 200 200 L 210 400 L 280 420 L 350 400 L 360 200 L 330 120 L 280 250 Z" />
+          {/* Buttons */}
+          <circle cx="280" cy="280" r="4" fill="#0a0a0a" />
+          <circle cx="280" cy="320" r="4" fill="#0a0a0a" />
+          <circle cx="280" cy="360" r="4" fill="#0a0a0a" />
+        </g>
+
+        {/* Bowtie */}
+        <g opacity="0.9">
+          <path d="M 280 120 L 250 110 L 250 135 Z M 280 120 L 310 110 L 310 135 Z" />
+          <circle cx="280" cy="122" r="6" />
+        </g>
+
+        {/* Bottle */}
+        <g opacity="1">
+          <path d="M 130 380 L 190 380 L 190 220 C 190 180, 175 160, 175 130 L 175 90 L 145 90 L 145 130 C 145 160, 130 180, 130 220 Z" />
+          {/* Label Cutout */}
+          <rect x="135" y="240" width="50" height="70" fill="#0a0a0a" />
+          {/* Foil Cutout */}
+          <rect x="145" y="110" width="30" height="5" fill="#0a0a0a" />
+        </g>
+
+        {/* Hands (Overlapping Bottle) */}
+        <g opacity="0.5">
+          {/* Top Hand */}
+          <path d="M 120 160 C 130 140, 160 130, 170 140 C 180 150, 180 170, 170 180 C 150 180, 130 190, 120 180 Z" />
+          {/* Bottom Hand */}
+          <path d="M 140 380 C 140 400, 200 400, 210 380 C 210 370, 170 370, 140 380 Z" />
+        </g>
+
+        {/* Towel */}
+        <g opacity="0.9">
+          <path d="M 250 350 L 310 340 L 330 480 L 290 490 L 270 420 L 250 480 Z" />
+          {/* Towel Folds */}
+          <path d="M 270 345 L 290 485" stroke="#0a0a0a" strokeWidth="2" fill="none" />
+          <path d="M 290 343 L 310 482" stroke="#0a0a0a" strokeWidth="2" fill="none" />
+        </g>
+      </svg>
+
       {/* Header */}
-      <header className="pt-16 pb-12 px-6 flex flex-col items-center text-center relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,_#351515_0%,_transparent_60%)] opacity-60 pointer-events-none"></div>
+      <header className="pt-16 pb-12 px-6 flex flex-col items-center text-center relative z-10">
         
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -82,24 +228,40 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
           onSubmit={handleSearch} 
-          className="w-full max-w-xl mx-auto mt-10 relative z-10"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`w-full max-w-xl mx-auto mt-10 relative z-10 rounded-full transition-all duration-300 ${isDragging ? 'ring-2 ring-wine-500 bg-wine-900/20 scale-[1.02]' : ''}`}
         >
           <div className="relative flex items-center">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="例如：Château Margaux 2015, Opus One..."
-              className="w-full bg-neutral-900/80 border border-neutral-800 rounded-full py-4 pl-6 pr-14 text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-wine-600 focus:border-wine-600 transition-all backdrop-blur-md"
+              placeholder={isDragging ? "放開以分析酒標圖片..." : "例如：Château Margaux 2015, Opus One..."}
+              className={`w-full bg-neutral-900/80 border rounded-full py-4 pl-6 pr-24 text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-wine-600 focus:border-wine-600 transition-all backdrop-blur-md ${isDragging ? 'border-wine-500' : 'border-neutral-800'}`}
               disabled={isLoading}
             />
-            <button
-              type="submit"
-              disabled={isLoading || !query.trim()}
-              className="absolute right-2 w-10 h-10 rounded-full bg-wine-800 hover:bg-wine-700 disabled:bg-neutral-800 disabled:text-neutral-500 flex items-center justify-center text-white transition-colors"
-            >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-            </button>
+            <div className="absolute right-2 flex items-center gap-1">
+              <label className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isLoading ? 'opacity-50 pointer-events-none text-neutral-500' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment"
+                  className="hidden" 
+                  onChange={handleImageUpload}
+                  disabled={isLoading}
+                />
+                <Camera className="w-5 h-5" />
+              </label>
+              <button
+                type="submit"
+                disabled={isLoading || !query.trim()}
+                className="w-10 h-10 rounded-full bg-wine-800 hover:bg-wine-700 disabled:bg-neutral-800 disabled:text-neutral-500 flex items-center justify-center text-white transition-colors"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </motion.form>
       </header>
@@ -146,22 +308,48 @@ export default function App() {
                   <Wine className="w-64 h-64" />
                 </div>
                 
-                {wineData.wineType && (
-                  <div className="w-full md:w-1/3 shrink-0 relative z-10 flex justify-center">
+                <div className="w-full md:w-1/3 shrink-0 relative z-10 flex flex-col items-center gap-6">
+                  {wineData.wineType && (
                     <div className="relative w-48 h-72 md:w-56 md:h-80 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800/50 bg-neutral-950">
-                      <img 
-                        src={getWineImage(wineData.wineType)} 
-                        alt={getWineTypeName(wineData.wineType)} 
-                        className="w-full h-full object-cover opacity-90 hover:opacity-100 transition-opacity duration-500"
-                        referrerPolicy="no-referrer"
-                      />
+                      <WineCategoryLogo type={wineData.wineType} className="w-full h-full opacity-90 hover:opacity-100 transition-opacity duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
+                      
                       <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-xs font-medium tracking-wider text-white">
                         {getWineTypeName(wineData.wineType)}
                       </div>
+
+                      {/* Country Flag */}
+                      {(wineData.countryCode || getFallbackCountryCode(wineData.region)) && (
+                        <div className="absolute top-3 right-3 shadow-lg overflow-hidden rounded-sm border border-white/20 bg-black/20">
+                          <img 
+                            src={`https://flagcdn.com/w80/${(wineData.countryCode || getFallbackCountryCode(wineData.region))?.toLowerCase()}.png`} 
+                            alt="Country Flag" 
+                            className="w-12 h-auto object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {wineData.mapSearchQuery && (
+                    <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800/50 bg-neutral-950 group">
+                      <iframe
+                        width="100%"
+                        height="100%"
+                        frameBorder="0"
+                        scrolling="no"
+                        marginHeight={0}
+                        marginWidth={0}
+                        src={`https://maps.google.com/maps?q=${encodeURIComponent(wineData.mapSearchQuery)}&t=&z=13&ie=UTF8&iwloc=&output=embed`}
+                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0"
+                      ></iframe>
+                      <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-xs font-medium tracking-wider text-white pointer-events-none">
+                        酒莊位置
+                      </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <div className="relative z-10 flex-1 w-full">
                   <div className="flex flex-wrap items-center gap-3 mb-4 text-xs font-semibold tracking-wider uppercase text-wine-400">
@@ -171,6 +359,11 @@ export default function App() {
                     <span className="flex items-center gap-1.5 bg-neutral-800/50 px-3 py-1 rounded-full border border-neutral-700/50 text-neutral-300">
                       <Calendar className="w-3.5 h-3.5" /> {wineData.vintage}
                     </span>
+                    {wineData.estimatedPriceHKD && (
+                      <span className="flex items-center gap-1.5 bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-900/50 text-emerald-400">
+                        <Tag className="w-3.5 h-3.5" /> Wine-Searcher 參考售價: {wineData.estimatedPriceHKD}
+                      </span>
+                    )}
                   </div>
                   
                   <h2 className="text-3xl md:text-5xl font-serif mb-6 leading-tight">
@@ -194,15 +387,27 @@ export default function App() {
 
                     <div className="h-10 w-px bg-neutral-800 hidden sm:block"></div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-neutral-800/50 flex items-center justify-center border border-neutral-700/50">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-full bg-neutral-800/50 flex items-center justify-center border border-neutral-700/50 shrink-0">
                         <Grape className="w-6 h-6 text-neutral-400" />
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-white max-w-[200px] truncate">
-                          {wineData.grapeVarieties.join(', ')}
+                      <div className="flex flex-col">
+                        <div className="text-xs text-neutral-400 uppercase tracking-widest mb-1">葡萄品種</div>
+                        <div className="flex flex-wrap gap-1.5 max-w-xs">
+                          {(isGrapesExpanded ? wineData.grapeVarieties : wineData.grapeVarieties.slice(0, 2)).map((grape, i) => (
+                            <span key={i} className="text-sm font-medium text-white bg-neutral-800/80 px-2 py-0.5 rounded border border-neutral-700/50">
+                              {grape}
+                            </span>
+                          ))}
+                          {wineData.grapeVarieties.length > 2 && (
+                            <button 
+                              onClick={() => setIsGrapesExpanded(!isGrapesExpanded)}
+                              className="text-xs font-medium text-wine-400 hover:text-wine-300 bg-wine-950/30 px-2 py-0.5 rounded border border-wine-900/50 transition-colors"
+                            >
+                              {isGrapesExpanded ? '收起' : `+${wineData.grapeVarieties.length - 2} 更多`}
+                            </button>
+                          )}
                         </div>
-                        <div className="text-xs text-neutral-400 uppercase tracking-widest mt-0.5">葡萄品種</div>
                       </div>
                     </div>
                   </div>
@@ -251,6 +456,32 @@ export default function App() {
                   </p>
                 </div>
               </div>
+
+              {/* Analysis Radar Chart */}
+              {wineData.analysis && (
+                <div className="bg-neutral-900/30 border border-neutral-800/50 rounded-3xl p-8">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Activity className="w-6 h-6 text-wine-400" />
+                    <h3 className="font-serif text-2xl text-white">五角形分析</h3>
+                  </div>
+                  <div className="h-80 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
+                        { subject: '酸度', A: wineData.analysis.acidity, fullMark: 10 },
+                        { subject: '甜度', A: wineData.analysis.sweetness, fullMark: 10 },
+                        { subject: '酒體', A: wineData.analysis.body, fullMark: 10 },
+                        { subject: '複雜度', A: wineData.analysis.complexity, fullMark: 10 },
+                        { subject: '平衡', A: wineData.analysis.balance, fullMark: 10 },
+                      ]}>
+                        <PolarGrid stroke="#404040" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#a3a3a3', fontSize: 14 }} />
+                        <PolarRadiusAxis angle={30} domain={[0, 10]} tick={false} axisLine={false} />
+                        <Radar name="Wine Analysis" dataKey="A" stroke="#9f1239" fill="#9f1239" fillOpacity={0.4} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
 
               {/* Vintage Notes */}
               {wineData.vintageNotes && (

@@ -2,6 +2,9 @@ export interface WineData {
   wineName: string;
   vintage: string;
   region: string;
+  countryCode: string;
+  mapSearchQuery: string;
+  estimatedPriceHKD: string;
   grapeVarieties: string[];
   description: string;
   wineType: 'red' | 'white' | 'sparkling' | 'rose' | 'sweet' | 'fortified' | 'other';
@@ -10,6 +13,13 @@ export interface WineData {
     aroma: string;
     palate: string;
     finish: string;
+  };
+  analysis: {
+    acidity: number;
+    sweetness: number;
+    body: number;
+    complexity: number;
+    balance: number;
   };
   vintageNotes: {
     type: 'specific' | 'general';
