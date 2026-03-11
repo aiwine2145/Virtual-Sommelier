@@ -1,7 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { WineData } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// 為了同時支援 Netlify 部署 (Vite) 與 AI Studio 本地預覽
+const viteEnv = (import.meta as any).env;
+const apiKey = (viteEnv && viteEnv.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '');
+const ai = new GoogleGenAI({ apiKey: apiKey as string });
 
 export async function extractWineInfoFromImage(base64Image: string, mimeType: string): Promise<any> {
   const response = await ai.models.generateContent({
