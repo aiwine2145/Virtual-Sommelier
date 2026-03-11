@@ -8,7 +8,7 @@ const ai = new GoogleGenAI({ apiKey: apiKey as string });
 
 export async function extractWineInfoFromImage(base64Image: string, mimeType: string): Promise<any> {
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3.1-flash",
     contents: {
       parts: [
         {
