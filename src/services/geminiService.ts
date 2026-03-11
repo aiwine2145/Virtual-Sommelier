@@ -8,7 +8,7 @@ const ai = new GoogleGenAI({ apiKey: apiKey as string });
 
 export async function extractWineInfoFromImage(base64Image: string, mimeType: string): Promise<any> {
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-flash",
+    model: "gemini-3.1-flash-lite-preview",
     contents: {
       parts: [
         {
@@ -59,7 +59,7 @@ export async function extractWineInfoFromImage(base64Image: string, mimeType: st
 
 export async function generateWineNotes(wineName: string): Promise<WineData> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.1-flash-lite-preview",
     contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for the following wine: "${wineName}". If the user specifies a vintage, provide notes on how that specific vintage performed in that region. If the user does not specify a vintage, provide notes for a typical or recent vintage AND provide a list of excellent recent vintages for that region. For the price, check Wine-Searcher. If there is a Hong Kong price, use it. If not, use the Wine-Searcher Global Average price, but convert it to Hong Kong Dollars (HKD). The reference price must be for a standard 750ml bottle. If the input is not a real wine, politely explain that you cannot find it and provide a generic example instead. IMPORTANT: All your responses must be in Cantonese (Traditional Chinese, 粵語白話文).`,
     config: {
       systemInstruction: "You are an expert sommelier with deep knowledge of wine regions, grape varieties, tasting profiles, and food pairings. Your tone is elegant, informative, and passionate about wine. You must reply in Cantonese (Traditional Chinese, 粵語白話文).",
