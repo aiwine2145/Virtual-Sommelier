@@ -7,7 +7,7 @@ export interface WineData {
   estimatedPriceHKD: string;
   grapeVarieties: string[];
   description: string;
-  wineType: 'red' | 'white' | 'sparkling' | 'rose' | 'sweet' | 'fortified' | 'other';
+  wineType: 'red' | 'white' | 'sparkling' | 'champagne' | 'rose' | 'sweet' | 'fortified' | 'other';
   tastingNotes: {
     appearance: string;
     aroma: string;
@@ -28,4 +28,5 @@ export interface WineData {
   };
   rating: number;
   foodPairings: string[];
+  decantingTime: string;
 }

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera } from 'lucide-react';
 import { generateWineNotes, extractWineInfoFromImage } from './services/geminiService';
 import { WineData } from './types';
-import { WineCategoryLogo } from './components/WineCategoryLogo';
+import { DecantingTimeLogo } from './components/WineCategoryLogo';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
 export default function App() {
@@ -145,63 +145,6 @@ export default function App() {
       {/* Global Background Gradient */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,_#6a1a1a_0%,_transparent_75%)] opacity-80 pointer-events-none"></div>
       
-      {/* Sommelier Silhouette */}
-      <svg viewBox="0 0 500 500" className="absolute bottom-0 right-0 w-[40rem] h-[40rem] md:w-[60rem] md:h-[60rem] opacity-[0.06] text-white pointer-events-none transform translate-x-[5%] translate-y-[5%]" fill="currentColor">
-        {/* Shirt (Skin/Arms) */}
-        <g opacity="0.4">
-          {/* Head */}
-          <ellipse cx="280" cy="55" rx="38" ry="48" />
-          {/* Neck */}
-          <rect x="258" y="90" width="44" height="30" />
-          {/* Left Arm (Viewer Left) */}
-          <path d="M 230 130 C 170 140, 120 180, 100 260 C 100 280, 130 280, 140 260 C 150 220, 150 180, 160 150 C 170 140, 190 160, 200 180 L 220 150 Z" />
-          {/* Right Arm (Viewer Right) */}
-          <path d="M 330 130 C 390 140, 440 180, 460 260 C 470 300, 440 340, 390 360 L 180 390 L 180 360 L 380 330 C 420 310, 420 260, 400 220 L 330 170 Z" />
-          {/* Shirt Body (V-Neck area) */}
-          <path d="M 230 120 L 280 250 L 330 120 Z" />
-        </g>
-
-        {/* Vest */}
-        <g opacity="0.8">
-          <path d="M 230 120 L 200 200 L 210 400 L 280 420 L 350 400 L 360 200 L 330 120 L 280 250 Z" />
-          {/* Buttons */}
-          <circle cx="280" cy="280" r="4" fill="#0a0a0a" />
-          <circle cx="280" cy="320" r="4" fill="#0a0a0a" />
-          <circle cx="280" cy="360" r="4" fill="#0a0a0a" />
-        </g>
-
-        {/* Bowtie */}
-        <g opacity="0.9">
-          <path d="M 280 120 L 250 110 L 250 135 Z M 280 120 L 310 110 L 310 135 Z" />
-          <circle cx="280" cy="122" r="6" />
-        </g>
-
-        {/* Bottle */}
-        <g opacity="1">
-          <path d="M 130 380 L 190 380 L 190 220 C 190 180, 175 160, 175 130 L 175 90 L 145 90 L 145 130 C 145 160, 130 180, 130 220 Z" />
-          {/* Label Cutout */}
-          <rect x="135" y="240" width="50" height="70" fill="#0a0a0a" />
-          {/* Foil Cutout */}
-          <rect x="145" y="110" width="30" height="5" fill="#0a0a0a" />
-        </g>
-
-        {/* Hands (Overlapping Bottle) */}
-        <g opacity="0.5">
-          {/* Top Hand */}
-          <path d="M 120 160 C 130 140, 160 130, 170 140 C 180 150, 180 170, 170 180 C 150 180, 130 190, 120 180 Z" />
-          {/* Bottom Hand */}
-          <path d="M 140 380 C 140 400, 200 400, 210 380 C 210 370, 170 370, 140 380 Z" />
-        </g>
-
-        {/* Towel */}
-        <g opacity="0.9">
-          <path d="M 250 350 L 310 340 L 330 480 L 290 490 L 270 420 L 250 480 Z" />
-          {/* Towel Folds */}
-          <path d="M 270 345 L 290 485" stroke="#0a0a0a" strokeWidth="2" fill="none" />
-          <path d="M 290 343 L 310 482" stroke="#0a0a0a" strokeWidth="2" fill="none" />
-        </g>
-      </svg>
-
       {/* Header */}
       <header className="pt-16 pb-12 px-6 flex flex-col items-center text-center relative z-10">
         
@@ -309,27 +252,26 @@ export default function App() {
                 </div>
                 
                 <div className="w-full md:w-1/3 shrink-0 relative z-10 flex flex-col items-center gap-6">
-                  {wineData.wineType && (
-                    <div className="relative w-48 h-72 md:w-56 md:h-80 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800/50 bg-neutral-950">
-                      <WineCategoryLogo type={wineData.wineType} className="w-full h-full opacity-90 hover:opacity-100 transition-opacity duration-500" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
-                      
-                      <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-xs font-medium tracking-wider text-white">
-                        {getWineTypeName(wineData.wineType)}
-                      </div>
+                  <div className="relative w-48 h-72 md:w-56 md:h-80 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800/50 bg-neutral-950">
+                    <DecantingTimeLogo decantingTime={wineData.decantingTime} wineType={wineData.wineType} className="w-full h-full" />
 
-                      {/* Country Flag */}
-                      {(wineData.countryCode || getFallbackCountryCode(wineData.region)) && (
-                        <div className="absolute top-3 right-3 shadow-lg overflow-hidden rounded-sm border border-white/20 bg-black/20">
-                          <img 
-                            src={`https://flagcdn.com/w80/${(wineData.countryCode || getFallbackCountryCode(wineData.region))?.toLowerCase()}.png`} 
-                            alt="Country Flag" 
-                            className="w-12 h-auto object-cover"
-                          />
-                        </div>
-                      )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
+                    
+                    <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-sm font-medium tracking-wider text-white">
+                      {getWineTypeName(wineData.wineType)}
                     </div>
-                  )}
+
+                    {/* Country Flag */}
+                    {(wineData.countryCode || getFallbackCountryCode(wineData.region)) && (
+                      <div className="absolute top-3 right-3 shadow-lg overflow-hidden rounded-sm border border-white/20 bg-black/20">
+                        <img 
+                          src={`https://flagcdn.com/w80/${(wineData.countryCode || getFallbackCountryCode(wineData.region))?.toLowerCase()}.png`} 
+                          alt="Country Flag" 
+                          className="w-12 h-auto object-cover"
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   {wineData.mapSearchQuery && (
                     <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800/50 bg-neutral-950 group">

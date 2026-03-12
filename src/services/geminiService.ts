@@ -60,7 +60,15 @@ export async function extractWineInfoFromImage(base64Image: string, mimeType: st
 export async function generateWineNotes(wineName: string): Promise<WineData> {
   const response = await ai.models.generateContent({
     model: "gemini-3.1-flash-lite-preview",
-    contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for the following wine: "${wineName}". If the user specifies a vintage, provide notes on how that specific vintage performed in that region. If the user does not specify a vintage, provide notes for a typical or recent vintage AND provide a list of excellent recent vintages for that region. For the price, check Wine-Searcher. If there is a Hong Kong price, use it. If not, use the Wine-Searcher Global Average price, but convert it to Hong Kong Dollars (HKD). The reference price must be for a standard 750ml bottle. If the input is not a real wine, politely explain that you cannot find it and provide a generic example instead. IMPORTANT: All your responses must be in Cantonese (Traditional Chinese, 粵語白話文).`,
+    contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
+Include vintage performance/recommendations, estimated price in HKD (750ml), and recommended decanting time (if none, state '無需醒酒').
+If unknown, provide generic examples.
+Language: Cantonese (Traditional Chinese).
+
+Food Pairing Rules:
+- Max 8 high-quality suggestions.
+- Prioritize Cantonese/Chinese cuisine.
+- Cantonese/Chinese pairings must not exceed 50% of total suggestions.`,
     config: {
       systemInstruction: "You are an expert sommelier with deep knowledge of wine regions, grape varieties, tasting profiles, and food pairings. Your tone is elegant, informative, and passionate about wine. You must reply in Cantonese (Traditional Chinese, 粵語白話文).",
       responseMimeType: "application/json",
@@ -165,6 +173,10 @@ export async function generateWineNotes(wineName: string): Promise<WineData> {
             type: Type.NUMBER,
             description: "A professional rating score out of 100.",
           },
+          decantingTime: {
+            type: Type.STRING,
+            description: "Recommended decanting time in Cantonese (e.g., '30-60 分鐘' or '無需醒酒').",
+          },
           foodPairings: {
             type: Type.ARRAY,
             items: {
@@ -187,6 +199,7 @@ export async function generateWineNotes(wineName: string): Promise<WineData> {
           "analysis",
           "vintageNotes",
           "rating",
+          "decantingTime",
           "foodPairings",
         ],
       },
@@ -195,4 +208,49 @@ export async function generateWineNotes(wineName: string): Promise<WineData> {
 
   const jsonStr = response.text?.trim() || "{}";
   return JSON.parse(jsonStr) as WineData;
+}
+
+export async function generateWineCategoryVideo(type: string): Promise<string> {
+  const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '');
+  const ai = new GoogleGenAI({ apiKey: apiKey as string });
+
+  const prompts: Record<string, string> = {
+    'red': 'A cinematic close-up slow motion shot of a red wine bottle with a completely blank white label, no text or images, standing on a dark wooden table in a dimly lit cellar. Elegant lighting.',
+    'white': 'A cinematic close-up slow motion shot of a white wine bottle with a completely blank white label, no text or images, condensation on the glass, standing on a bright marble counter.',
+    'sparkling': 'A cinematic close-up slow motion shot of a sparkling wine bottle with a completely blank gold label, no text or images, fine bubbles visible inside, elegant setting.',
+    'champagne': 'A cinematic close-up slow motion shot of a champagne bottle with a completely blank silver label, no text or images, being placed in an ice bucket, luxury atmosphere.',
+    'rose': 'A cinematic close-up slow motion shot of a rose wine bottle with a completely blank pinkish label, no text or images, outdoors in a sunny garden setting.',
+    'sweet': 'A cinematic close-up slow motion shot of a dessert wine bottle with a completely blank label, no text or images, golden liquid, small elegant bottle.',
+    'fortified': 'A cinematic close-up slow motion shot of a fortified wine bottle with a completely blank dark label, no text or images, rich dark liquid, classic study room setting.'
+  };
+
+  const prompt = prompts[type.toLowerCase()] || 'A cinematic close-up shot of a wine bottle with a completely blank label, no text or images, elegant setting.';
+
+  let operation = await ai.models.generateVideos({
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: prompt,
+    config: {
+      numberOfVideos: 1,
+      resolution: '720p',
+      aspectRatio: '9:16'
+    }
+  });
+
+  while (!operation.done) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    operation = await ai.operations.getVideosOperation({ operation: operation });
+  }
+
+  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+  if (!downloadLink) throw new Error("Failed to generate video");
+
+  const videoResponse = await fetch(downloadLink, {
+    method: 'GET',
+    headers: {
+      'x-goog-api-key': apiKey,
+    },
+  });
+
+  const blob = await videoResponse.blob();
+  return URL.createObjectURL(blob);
 }
