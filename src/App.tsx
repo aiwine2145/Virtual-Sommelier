@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera } from 'lucide-react';
-import { generateWineNotes, extractWineInfoFromImage } from './services/geminiService';
-import { WineData } from './types';
+import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera, ChefHat } from 'lucide-react';
+import { generateWineNotes, extractWineInfoFromImage, getWinePairingForDish } from './services/geminiService';
+import { WineData, WinePairing } from './types';
 import { DecantingTimeLogo } from './components/WineCategoryLogo';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
 export default function App() {
   const [query, setQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<'wine' | 'dish'>('wine');
   const [isLoading, setIsLoading] = useState(false);
   const [wineData, setWineData] = useState<WineData | null>(null);
+  const [winePairingData, setWinePairingData] = useState<WinePairing | null>(null);
+  const [excludedWineries, setExcludedWineries] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isGrapesExpanded, setIsGrapesExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -52,14 +55,24 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     setWineData(null);
+    setWinePairingData(null);
     setIsGrapesExpanded(false);
 
     try {
-      const data = await generateWineNotes(query);
-      setWineData(data);
+      if (searchMode === 'wine') {
+        const data = await generateWineNotes(query);
+        setWineData(data);
+      } else {
+        const data = await getWinePairingForDish(query, excludedWineries);
+        setWinePairingData(data);
+        if (data.recommendations) {
+          const newWineries = data.recommendations.map(r => r.winery);
+          setExcludedWineries(prev => [...prev, ...newWineries]);
+        }
+      }
     } catch (err) {
       console.error(err);
-      setError("唔好意思，我搵唔到呢款酒嘅品酒筆記。試下入過另一個名啦。");
+      setError(searchMode === 'wine' ? "唔好意思，我搵唔到呢款酒嘅品酒筆記。試下入過另一個名啦。" : "唔好意思，我搵唔到合適嘅配酒建議。試下入過另一道菜名啦。");
     } finally {
       setIsLoading(false);
     }
@@ -161,7 +174,9 @@ export default function App() {
             虛擬侍酒師
           </h1>
           <p className="text-neutral-400 max-w-md mx-auto font-light text-sm md:text-base tracking-wide">
-            輸入酒名或上傳圖片，即刻為你送上品酒筆記、專業評分同埋完美配餐建議。
+            {searchMode === 'wine' 
+              ? "輸入酒名或上傳圖片，即刻為你送上品酒筆記、專業評分同埋完美配餐建議。"
+              : "輸入菜式名稱，即刻為你建議配餐用酒"}
           </p>
         </motion.div>
 
@@ -176,27 +191,45 @@ export default function App() {
           onDrop={handleDrop}
           className={`w-full max-w-xl mx-auto mt-10 relative z-10 rounded-full transition-all duration-300 ${isDragging ? 'ring-2 ring-wine-500 bg-wine-900/20 scale-[1.02]' : ''}`}
         >
+          <div className="flex justify-center gap-4 mb-4">
+            <button
+              type="button"
+              onClick={() => setSearchMode('wine')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${searchMode === 'wine' ? 'bg-wine-800 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+            >
+              <Wine className="w-4 h-4 inline mr-1" /> 搜尋酒款
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchMode('dish')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${searchMode === 'dish' ? 'bg-wine-800 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+            >
+              <ChefHat className="w-4 h-4 inline mr-1" /> 配餐推薦酒
+            </button>
+          </div>
           <div className="relative flex items-center">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={isDragging ? "放開以分析酒標圖片..." : "例如：Château Margaux 2015, Opus One..."}
+              placeholder={searchMode === 'wine' ? (isDragging ? "放開以分析酒標圖片..." : "例如：Château Margaux 2015, Opus One...") : "例如：北京填鴨, 壽司, 芝士漢堡..."}
               className={`w-full bg-neutral-900/80 border rounded-full py-4 pl-6 pr-24 text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-wine-600 focus:border-wine-600 transition-all backdrop-blur-md ${isDragging ? 'border-wine-500' : 'border-neutral-800'}`}
               disabled={isLoading}
             />
             <div className="absolute right-2 flex items-center gap-1">
-              <label className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isLoading ? 'opacity-50 pointer-events-none text-neutral-500' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  capture="environment"
-                  className="hidden" 
-                  onChange={handleImageUpload}
-                  disabled={isLoading}
-                />
-                <Camera className="w-5 h-5" />
-              </label>
+              {searchMode === 'wine' && (
+                <label className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isLoading ? 'opacity-50 pointer-events-none text-neutral-500' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment"
+                    className="hidden" 
+                    onChange={handleImageUpload}
+                    disabled={isLoading}
+                  />
+                  <Camera className="w-5 h-5" />
+                </label>
+              )}
               <button
                 type="submit"
                 disabled={isLoading || !query.trim()}
@@ -224,7 +257,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {isLoading && !wineData && (
+          {isLoading && !wineData && !winePairingData && (
             <motion.div
               key="loading"
               initial={{ opacity: 0 }}
@@ -233,7 +266,66 @@ export default function App() {
               className="flex flex-col items-center justify-center py-20 text-wine-400"
             >
               <Loader2 className="w-10 h-10 animate-spin mb-4" />
-              <p className="font-serif italic text-neutral-400">幫你醒緊酒，準備緊筆記...</p>
+              <p className="font-serif italic text-neutral-400">{searchMode === 'wine' ? '幫你醒緊酒，準備緊筆記...' : '侍酒師正在為您尋找完美搭配...'}</p>
+            </motion.div>
+          )}
+
+          {winePairingData && (
+            <motion.div
+              key="pairing-results"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="bg-neutral-900/50 border border-neutral-800/80 rounded-3xl p-8 md:p-10 backdrop-blur-sm space-y-6"
+            >
+              <div className="flex items-center gap-3">
+                <ChefHat className="w-8 h-8 text-wine-400" />
+                <h2 className="text-3xl font-serif text-white">配餐推薦</h2>
+              </div>
+              <div className="space-y-4">
+                <p className="text-neutral-400">為您的菜色 <span className="text-white font-semibold">"{query}"</span> 推薦以下酒款：</p>
+                
+                {winePairingData.refusalReason ? (
+                  <div className="bg-neutral-950 rounded-2xl p-6 border border-neutral-800">
+                    <p className="text-neutral-300 italic leading-relaxed">{winePairingData.refusalReason}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {winePairingData.recommendations?.map((rec, index) => (
+                      <div key={index} className="bg-neutral-950 rounded-2xl p-6 border border-neutral-800 space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-2xl font-serif text-wine-400 mb-1">{rec.wine_name}</h3>
+                            <p className="text-neutral-300 font-medium">{rec.winery} ({rec.vintage})</p>
+                          </div>
+                          <div className="bg-wine-950/50 px-3 py-1 rounded-full border border-wine-900/50 text-xs font-semibold tracking-wider uppercase text-wine-400">
+                            {rec.wineType ? getWineTypeName(rec.wineType) : '葡萄酒'}
+                          </div>
+                        </div>
+                        
+                        <p className="text-neutral-400 italic leading-relaxed border-b border-neutral-800 pb-4">"{rec.reason}"</p>
+                        
+                        <div className="flex flex-wrap gap-4 text-sm text-neutral-400">
+                          {rec.region && <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {rec.region}</span>}
+                          {rec.rating && <span className="flex items-center gap-1.5"><Star className="w-4 h-4 text-wine-400" /> {rec.rating}/100</span>}
+                          {rec.estimatedPriceHKD && <span className="flex items-center gap-1.5"><Tag className="w-4 h-4" /> {rec.estimatedPriceHKD}</span>}
+                          {rec.decantingTime && <span className="flex items-center gap-1.5"><Wind className="w-4 h-4" /> 醒酒: {rec.decantingTime}</span>}
+                        </div>
+                        
+                        {rec.grapeVarieties && rec.grapeVarieties.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {rec.grapeVarieties.map((grape, i) => (
+                              <span key={i} className="text-xs font-medium text-white bg-neutral-800/80 px-2 py-1 rounded border border-neutral-700/50">
+                                {grape}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 

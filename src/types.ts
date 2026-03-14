@@ -30,3 +30,22 @@ export interface WineData {
   foodPairings: string[];
   decantingTime: string;
 }
+
+export interface WineRecommendation {
+  winery: string;
+  wine_name: string;
+  vintage: string;
+  reason: string;
+  wineType: 'red' | 'white' | 'sparkling' | 'champagne' | 'rose' | 'sweet' | 'fortified' | 'other';
+  region: string;
+  countryCode: string;
+  estimatedPriceHKD: string;
+  rating: number;
+  grapeVarieties: string[];
+  decantingTime: string;
+}
+
+export interface WinePairing {
+  recommendations?: WineRecommendation[];
+  refusalReason?: string;
+}

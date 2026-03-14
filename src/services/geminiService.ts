@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { WineData } from "../types";
+import { WineData, WinePairing } from "../types";
 
 // 為了同時支援 Netlify 部署 (Vite) 與 AI Studio 本地預覽
 const viteEnv = (import.meta as any).env;
@@ -12,28 +12,30 @@ export async function extractWineInfoFromImage(base64Image: string, mimeType: st
     contents: {
       parts: [
         {
-          inlineData: {
-            data: base64Image,
-            mimeType: mimeType,
-          },
-        },
-        {
-          text: `你是一位專業的葡萄酒侍酒師與資料萃取專家。你的任務是精準分析使用者上傳的酒標圖片，並萃取出關鍵的葡萄酒資訊。
+          text: `你是一位專業的侍酒師。請分析這張酒標圖片，綜合酒標上的圖案、Logo、排版與文字，辨識出這是哪一款酒。
 請絕對保持客觀，不要編造圖片中沒有的資訊。如果圖片模糊或缺少某項資訊，請在該欄位填寫 "null"。
 你必須且只能以 JSON 格式輸出結果，不要包含任何其他解釋性文字。
 
-請分析這張酒標圖片，並根據以下 JSON 格式回傳資料：
+請忽略進口商、容量、警告標語等無關資訊，只提取能用於精準搜尋的核心酒名、酒莊與年份。如果酒標上沒有明確名稱，請根據視覺特徵推斷最可能的酒莊與酒款。
+
+請根據以下 JSON 格式回傳資料：
 
 {
-  "winery": "酒莊名稱 (例如：Penfolds, Concha y Toro)",
-  "wine_name": "酒款名稱 (例如：Bin 389, Casillero del Diablo)",
-  "vintage": "年份，請填寫四位數字 (例如：2018)。若無年份請填寫 null",
-  "grape_variety": "葡萄品種 (例如：Cabernet Sauvignon, Merlot)。若無標示請填寫 null",
-  "region": "產區 (例如：Bordeaux, Napa Valley)",
+  "winery": "酒莊名稱",
+  "wine_name": "酒款名稱",
+  "vintage": "年份，請填寫四位數字。若無年份請填寫 null",
+  "grape_variety": "葡萄品種。若無標示請填寫 null",
+  "region": "產區",
   "country": "生產國家"
 }
 
 重要指示：請嚴格且僅以 JSON 格式輸出結果，不要包含任何 Markdown 標記（例如不要寫 \`\`\`json ），也不要加入任何問候語或解釋性文字。`
+        },
+        {
+          inlineData: {
+            data: base64Image,
+            mimeType: mimeType,
+          },
         }
       ]
     },
@@ -208,6 +210,61 @@ Food Pairing Rules:
 
   const jsonStr = response.text?.trim() || "{}";
   return JSON.parse(jsonStr) as WineData;
+}
+
+export async function getWinePairingForDish(dishName: string, excludedWineries: string[] = []): Promise<WinePairing> {
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-flash-lite-preview",
+    contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。
+
+1. 檢查菜式：若使用者輸入的菜式不存在、不合理或不道德，請拒絕提供推薦，並在 \`refusalReason\` 欄位說明理由。
+
+2. 若菜式有效，請推薦 3 款最適合搭配的葡萄酒，條件如下：
+   a. 搜尋範圍：必須是在以下香港本地葡萄酒網店及零售店能夠購買到的酒款。搜尋範圍包括：
+      RNG Wine, Wine Couple, W Cellar, Wine Time, Remfly, Lyndhurst Wine, Wine Century Hong Kong, Vivino HK, Wines Buddy, Wine Wine, WineView, Watson's Wine, Two More Glasses, Ponti wine, Myicellar, Wine rack。
+   b. 酒款選擇：不限於知名酒款，即使是冷門、小眾或特殊產區的酒款皆可。請盡量推薦不同種類的酒款（例如：一款紅酒、一款白酒、一款氣泡酒）。**請務必確保推薦的酒款具有多樣性，避免重複推薦相同的酒款。**
+   c. 匹配度：要求極高，只推薦與該菜式「高度合適」的酒款。
+   d. **排除名單**：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
+
+請提供具體的酒莊 (winery)、酒款名稱 (wine_name)、建議年份 (vintage)、推薦搭配理由 (reason)、酒類類型 (wineType)、產區 (region)、國家代碼 (countryCode)、預估價格 (estimatedPriceHKD)、評分 (rating，請提供 0-100 的專業評分)、葡萄品種 (grapeVarieties) 以及建議醒酒時間 (decantingTime)。
+
+請以 JSON 格式回傳。推薦理由 (reason) 請使用粵語白話文表達，酒名與酒莊名稱請保持原文。
+
+使用者輸入的菜色是：${dishName}`,
+    config: {
+      systemInstruction: "You are a top sommelier based in Hong Kong. You provide expert, highly accurate wine pairing recommendations for dishes, focusing on wines available in the Hong Kong market (including niche/lesser-known wines from retailers like RNG Wine, Wine Couple, W Cellar, Wine Time, Remfly, Lyndhurst Wine, Wine Century Hong Kong, Vivino HK, Wines Buddy, Wine Wine, WineView, Watson's Wine, Two More Glasses, Ponti wine, Myicellar, Wine rack). Provide 3 distinct recommendations of different types if possible. If the dish is invalid, unreasonable, or unethical, refuse to provide a recommendation and explain why in the 'refusalReason' field. You must reply in JSON format. The 'reason' field must be written in Cantonese (Traditional Chinese, 粵語白話文), while keeping wine names and winery names in their original language.",
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          recommendations: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                winery: { type: Type.STRING },
+                wine_name: { type: Type.STRING },
+                vintage: { type: Type.STRING },
+                reason: { type: Type.STRING },
+                wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
+                region: { type: Type.STRING },
+                countryCode: { type: Type.STRING },
+                estimatedPriceHKD: { type: Type.STRING },
+                rating: { type: Type.NUMBER },
+                grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
+                decantingTime: { type: Type.STRING }
+              },
+              required: ["winery", "wine_name", "vintage", "reason", "wineType", "region", "countryCode", "estimatedPriceHKD", "rating", "grapeVarieties", "decantingTime"]
+            }
+          },
+          refusalReason: { type: Type.STRING }
+        }
+      },
+    },
+  });
+
+  const jsonStr = response.text?.trim() || "{}";
+  return JSON.parse(jsonStr) as WinePairing;
 }
 
 export async function generateWineCategoryVideo(type: string): Promise<string> {
