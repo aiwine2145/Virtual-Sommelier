@@ -62,9 +62,13 @@ export async function generateWineCategoryVideo(type: string): Promise<string> {
 }
 
 export async function* chatStream(messages: any[], systemInstruction?: string): AsyncGenerator<string> {
+  // 精準設定為 /api/chat，Netlify 會根據 netlify.toml 轉發至 functions
   const response = await fetch("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
+    // 傳遞 JSON body，包含對話紀錄與系統指令
     body: JSON.stringify({ messages, systemInstruction }),
   });
 
@@ -83,6 +87,7 @@ export async function* chatStream(messages: any[], systemInstruction?: string): 
     const { done, value } = await reader.read();
     if (done) break;
 
+    // 使用 TextDecoder 解析串流資料塊
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
@@ -93,6 +98,7 @@ export async function* chatStream(messages: any[], systemInstruction?: string): 
         if (dataStr === "[DONE]") continue;
         try {
           const data = JSON.parse(dataStr);
+          // 提取 Gemini 回傳的文字內容，達成打字機效果
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (text) yield text;
         } catch (e) {
