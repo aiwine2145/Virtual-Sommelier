@@ -1,52 +1,53 @@
-import { GoogleGenAI } from "@google/genai";
+import type { Config, Context } from "@netlify/functions";
 
-export const handler = async (event: any) => {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+export default async (request: Request, context: Context) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
   }
 
   try {
-    const { messages, systemInstruction } = JSON.parse(event.body);
+    const { messages, systemInstruction } = await request.json();
     const apiKey = process.env.GEMINI_API_KEY;
-    const ai = new GoogleGenAI({ apiKey: apiKey as string });
-
     const model = "gemini-3-flash-preview";
     
-    // We use streamGenerateContent for streaming
-    const result = await ai.models.generateContentStream({
-      model,
-      contents: messages,
-      config: {
-        systemInstruction: systemInstruction || "You are a helpful assistant.",
-      }
-    });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
 
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        for await (const chunk of result) {
-          const text = chunk.text;
-          if (text) {
-            controller.enqueue(encoder.encode(text));
-          }
-        }
-        controller.close();
-      },
-    });
-
-    return {
-      statusCode: 200,
+    const response = await fetch(url, {
+      method: "POST",
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Transfer-Encoding": "chunked",
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey as string,
       },
-      body: stream,
-    };
+      body: JSON.stringify({
+        contents: messages,
+        systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return new Response(JSON.stringify(error), {
+        status: response.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(response.body, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
   } catch (error: any) {
     console.error("Chat Stream Error:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
-    };
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
+};
+
+export const config: Config = {
+  path: "/api/chat",
 };

@@ -62,7 +62,7 @@ export async function generateWineCategoryVideo(type: string): Promise<string> {
 }
 
 export async function* chatStream(messages: any[], systemInstruction?: string): AsyncGenerator<string> {
-  const response = await fetch("/api/chat/stream", {
+  const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, systemInstruction }),
@@ -77,9 +77,28 @@ export async function* chatStream(messages: any[], systemInstruction?: string): 
   if (!reader) throw new Error("No reader available");
 
   const decoder = new TextDecoder();
+  let buffer = "";
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    yield decoder.decode(value, { stream: true });
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const dataStr = line.slice(6);
+        if (dataStr === "[DONE]") continue;
+        try {
+          const data = JSON.parse(dataStr);
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) yield text;
+        } catch (e) {
+          console.error("Error parsing SSE data:", e);
+        }
+      }
+    }
   }
 }

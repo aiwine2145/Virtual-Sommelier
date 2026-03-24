@@ -261,7 +261,7 @@ Food Pairing Rules:
     }
   });
 
-  app.post("/api/chat/stream", async (req, res) => {
+  app.post("/api/chat", async (req, res) => {
     try {
       const { messages, systemInstruction } = req.body;
       const response = await ai.models.generateContentStream({
@@ -272,18 +272,28 @@ Food Pairing Rules:
         },
       });
 
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Transfer-Encoding", "chunked");
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
 
       for await (const chunk of response) {
         const text = chunk.text;
         if (text) {
-          res.write(text);
+          // Mock SSE format for local development compatibility
+          const data = {
+            candidates: [{
+              content: {
+                parts: [{ text }]
+              }
+            }]
+          };
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
         }
       }
+      res.write("data: [DONE]\n\n");
       res.end();
     } catch (error: any) {
-      console.error("Chat Stream Error:", error);
+      console.error("Chat Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
