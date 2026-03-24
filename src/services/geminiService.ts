@@ -1,313 +1,103 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { WineData, WinePairing } from "../types";
 
-// 為了同時支援 Netlify 部署 (Vite) 與 AI Studio 本地預覽
-const viteEnv = (import.meta as any).env;
-const apiKey = (viteEnv && viteEnv.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '');
-const ai = new GoogleGenAI({ apiKey: apiKey as string });
-
 export async function extractWineInfoFromImage(base64Image: string, mimeType: string): Promise<any> {
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-flash-lite-preview",
-    contents: {
-      parts: [
-        {
-          text: `你是一位專業的侍酒師。請分析這張酒標圖片，綜合酒標上的圖案、Logo、排版與文字，辨識出這是哪一款酒。
-請絕對保持客觀，不要編造圖片中沒有的資訊。如果圖片模糊或缺少某項資訊，請在該欄位填寫 "null"。
-你必須且只能以 JSON 格式輸出結果，不要包含任何其他解釋性文字。
-
-請忽略進口商、容量、警告標語等無關資訊，只提取能用於精準搜尋的核心酒名、酒莊與年份。如果酒標上沒有明確名稱，請根據視覺特徵推斷最可能的酒莊與酒款。
-
-請根據以下 JSON 格式回傳資料：
-
-{
-  "winery": "酒莊名稱",
-  "wine_name": "酒款名稱",
-  "vintage": "年份，請填寫四位數字。若無年份請填寫 null",
-  "grape_variety": "葡萄品種。若無標示請填寫 null",
-  "region": "產區",
-  "country": "生產國家"
-}
-
-重要指示：請嚴格且僅以 JSON 格式輸出結果，不要包含任何 Markdown 標記（例如不要寫 \`\`\`json ），也不要加入任何問候語或解釋性文字。`
-        },
-        {
-          inlineData: {
-            data: base64Image,
-            mimeType: mimeType,
-          },
-        }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          winery: { type: Type.STRING, nullable: true },
-          wine_name: { type: Type.STRING, nullable: true },
-          vintage: { type: Type.STRING, nullable: true },
-          grape_variety: { type: Type.STRING, nullable: true },
-          region: { type: Type.STRING, nullable: true },
-          country: { type: Type.STRING, nullable: true },
-        }
-      }
-    }
+  const response = await fetch("/api/gemini/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base64Image, mimeType }),
   });
 
-  const jsonStr = response.text?.trim() || "{}";
-  return JSON.parse(jsonStr);
+  if (!response.ok) {
+    const errorData = (await response.json()) as any;
+    throw new Error(errorData.error || "Failed to extract wine info");
+  }
+
+  return response.json();
 }
 
 export async function generateWineNotes(wineName: string): Promise<WineData> {
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-flash-lite-preview",
-    contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
-Include vintage performance/recommendations, estimated price in HKD (750ml), and recommended decanting time (if none, state '無需醒酒').
-If unknown, provide generic examples.
-Language: Cantonese (Traditional Chinese).
-
-Food Pairing Rules:
-- Max 8 high-quality suggestions.
-- Prioritize Cantonese/Chinese cuisine.
-- Cantonese/Chinese pairings must not exceed 50% of total suggestions.`,
-    config: {
-      systemInstruction: "You are an expert sommelier with deep knowledge of wine regions, grape varieties, tasting profiles, and food pairings. Your tone is elegant, informative, and passionate about wine. You must reply in Cantonese (Traditional Chinese, 粵語白話文).",
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          wineName: {
-            type: Type.STRING,
-            description: "The full name of the wine, including producer and cuvée.",
-          },
-          vintage: {
-            type: Type.STRING,
-            description: "The vintage year, or 'NV' for non-vintage.",
-          },
-          region: {
-            type: Type.STRING,
-            description: "The wine region and country (e.g., 'Bordeaux, France').",
-          },
-          countryCode: {
-            type: Type.STRING,
-            description: "The 2-letter ISO 3166-1 alpha-2 country code for the wine's country of origin (e.g., 'FR' for France, 'IT' for Italy, 'US' for USA).",
-          },
-          mapSearchQuery: {
-            type: Type.STRING,
-            description: "The best search query to find the exact winery location on Google Maps (e.g., 'Château Lafite Rothschild, Pauillac, France'). If the specific winery is unknown or generic, provide the region instead (e.g., 'Pauillac, Bordeaux, France').",
-          },
-          estimatedPriceHKD: {
-            type: Type.STRING,
-            description: "The Wine-Searcher retail price in Hong Kong Dollars (HKD) for a standard 750ml bottle. Prefer Hong Kong price, fallback to Global Average price converted to HKD. Format as 'HK$XXX (750ml)'. If unknown, provide a best estimate or '價格不詳'.",
-          },
-          grapeVarieties: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.STRING,
-            },
-            description: "The grape varieties used in the wine.",
-          },
-          description: {
-            type: Type.STRING,
-            description: "A short, elegant summary of the wine's character in Cantonese.",
-          },
-          wineType: {
-            type: Type.STRING,
-            description: "The general category of the wine.",
-            enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other']
-          },
-          tastingNotes: {
-            type: Type.OBJECT,
-            properties: {
-              appearance: {
-                type: Type.STRING,
-                description: "Visual characteristics (color, clarity, viscosity).",
-              },
-              aroma: {
-                type: Type.STRING,
-                description: "Olfactory characteristics (primary, secondary, tertiary aromas).",
-              },
-              palate: {
-                type: Type.STRING,
-                description: "Taste characteristics (sweetness, acidity, tannin, alcohol, body, flavor intensity).",
-              },
-              finish: {
-                type: Type.STRING,
-                description: "The length and nature of the aftertaste.",
-              },
-            },
-            required: ["appearance", "aroma", "palate", "finish"],
-          },
-          analysis: {
-            type: Type.OBJECT,
-            description: "A numerical analysis of the wine's characteristics on a scale of 1 to 10.",
-            properties: {
-              acidity: { type: Type.NUMBER, description: "Acidity level (1-10)" },
-              sweetness: { type: Type.NUMBER, description: "Sweetness level (1-10)" },
-              body: { type: Type.NUMBER, description: "Body/Weight level (1-10)" },
-              complexity: { type: Type.NUMBER, description: "Complexity level (1-10)" },
-              balance: { type: Type.NUMBER, description: "Overall balance level (1-10)" }
-            },
-            required: ["acidity", "sweetness", "body", "complexity", "balance"]
-          },
-          vintageNotes: {
-            type: Type.OBJECT,
-            description: "Information about the vintage performance.",
-            properties: {
-              type: {
-                type: Type.STRING,
-                description: "Whether the notes are for a specific vintage ('specific') or general excellent vintages ('general').",
-                enum: ['specific', 'general']
-              },
-              year: {
-                type: Type.STRING,
-                description: "The specific year if applicable, otherwise omit or leave empty."
-              },
-              description: {
-                type: Type.STRING,
-                description: "Description of the vintage performance in that region, or a list of excellent vintages in Cantonese."
-              }
-            },
-            required: ["type", "description"]
-          },
-          rating: {
-            type: Type.NUMBER,
-            description: "A professional rating score out of 100.",
-          },
-          decantingTime: {
-            type: Type.STRING,
-            description: "Recommended decanting time in Cantonese (e.g., '30-60 分鐘' or '無需醒酒').",
-          },
-          foodPairings: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.STRING,
-            },
-            description: "Specific and complementary food pairing suggestions.",
-          },
-        },
-        required: [
-          "wineName",
-          "vintage",
-          "region",
-          "countryCode",
-          "mapSearchQuery",
-          "estimatedPriceHKD",
-          "grapeVarieties",
-          "description",
-          "wineType",
-          "tastingNotes",
-          "analysis",
-          "vintageNotes",
-          "rating",
-          "decantingTime",
-          "foodPairings",
-        ],
-      },
-    },
+  const response = await fetch("/api/gemini/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wineName }),
   });
 
-  const jsonStr = response.text?.trim() || "{}";
-  return JSON.parse(jsonStr) as WineData;
+  if (!response.ok) {
+    const errorData = (await response.json()) as any;
+    throw new Error(errorData.error || "Failed to generate wine notes");
+  }
+
+  return response.json();
 }
 
 export async function getWinePairingForDish(dishName: string, excludedWineries: string[] = []): Promise<WinePairing> {
-  const response = await ai.models.generateContent({
-    model: "gemini-3.1-flash-lite-preview",
-    contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。
-
-1. 檢查菜式：若使用者輸入的菜式不存在、不合理或不道德，請拒絕提供推薦，並在 \`refusalReason\` 欄位說明理由。
-
-2. 若菜式有效，請推薦 3 款最適合搭配的葡萄酒，條件如下：
-   a. 搜尋範圍：必須是在以下香港本地葡萄酒網店及零售店能夠購買到的酒款。搜尋範圍包括：
-      RNG Wine, Wine Couple, W Cellar, Wine Time, Remfly, Lyndhurst Wine, Wine Century Hong Kong, Vivino HK, Wines Buddy, Wine Wine, WineView, Watson's Wine, Two More Glasses, Ponti wine, Myicellar, Wine rack。
-   b. 酒款選擇：不限於知名酒款，即使是冷門、小眾或特殊產區的酒款皆可。請盡量推薦不同種類的酒款（例如：一款紅酒、一款白酒、一款氣泡酒）。**請務必確保推薦的酒款具有多樣性，避免重複推薦相同的酒款。**
-   c. 匹配度：要求極高，只推薦與該菜式「高度合適」的酒款。
-   d. **排除名單**：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
-
-請提供具體的酒莊 (winery)、酒款名稱 (wine_name)、建議年份 (vintage)、推薦搭配理由 (reason)、酒類類型 (wineType)、產區 (region)、國家代碼 (countryCode)、預估價格 (estimatedPriceHKD)、評分 (rating，請提供 0-100 的專業評分)、葡萄品種 (grapeVarieties) 以及建議醒酒時間 (decantingTime)。
-
-請以 JSON 格式回傳。推薦理由 (reason) 請使用粵語白話文表達，酒名與酒莊名稱請保持原文。
-
-使用者輸入的菜色是：${dishName}`,
-    config: {
-      systemInstruction: "You are a top sommelier based in Hong Kong. You provide expert, highly accurate wine pairing recommendations for dishes, focusing on wines available in the Hong Kong market (including niche/lesser-known wines from retailers like RNG Wine, Wine Couple, W Cellar, Wine Time, Remfly, Lyndhurst Wine, Wine Century Hong Kong, Vivino HK, Wines Buddy, Wine Wine, WineView, Watson's Wine, Two More Glasses, Ponti wine, Myicellar, Wine rack). Provide 3 distinct recommendations of different types if possible. If the dish is invalid, unreasonable, or unethical, refuse to provide a recommendation and explain why in the 'refusalReason' field. You must reply in JSON format. The 'reason' field must be written in Cantonese (Traditional Chinese, 粵語白話文), while keeping wine names and winery names in their original language.",
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          recommendations: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                winery: { type: Type.STRING },
-                wine_name: { type: Type.STRING },
-                vintage: { type: Type.STRING },
-                reason: { type: Type.STRING },
-                wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
-                region: { type: Type.STRING },
-                countryCode: { type: Type.STRING },
-                estimatedPriceHKD: { type: Type.STRING },
-                rating: { type: Type.NUMBER },
-                grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-                decantingTime: { type: Type.STRING }
-              },
-              required: ["winery", "wine_name", "vintage", "reason", "wineType", "region", "countryCode", "estimatedPriceHKD", "rating", "grapeVarieties", "decantingTime"]
-            }
-          },
-          refusalReason: { type: Type.STRING }
-        }
-      },
-    },
+  const response = await fetch("/api/gemini/pairing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dishName, excludedWineries }),
   });
 
-  const jsonStr = response.text?.trim() || "{}";
-  return JSON.parse(jsonStr) as WinePairing;
+  if (!response.ok) {
+    const errorData = (await response.json()) as any;
+    throw new Error(errorData.error || "Failed to get wine pairing");
+  }
+
+  return response.json();
 }
 
 export async function generateWineCategoryVideo(type: string): Promise<string> {
-  const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '');
-  const ai = new GoogleGenAI({ apiKey: apiKey as string });
-
-  const prompts: Record<string, string> = {
-    'red': 'A cinematic close-up slow motion shot of a red wine bottle with a completely blank white label, no text or images, standing on a dark wooden table in a dimly lit cellar. Elegant lighting.',
-    'white': 'A cinematic close-up slow motion shot of a white wine bottle with a completely blank white label, no text or images, condensation on the glass, standing on a bright marble counter.',
-    'sparkling': 'A cinematic close-up slow motion shot of a sparkling wine bottle with a completely blank gold label, no text or images, fine bubbles visible inside, elegant setting.',
-    'champagne': 'A cinematic close-up slow motion shot of a champagne bottle with a completely blank silver label, no text or images, being placed in an ice bucket, luxury atmosphere.',
-    'rose': 'A cinematic close-up slow motion shot of a rose wine bottle with a completely blank pinkish label, no text or images, outdoors in a sunny garden setting.',
-    'sweet': 'A cinematic close-up slow motion shot of a dessert wine bottle with a completely blank label, no text or images, golden liquid, small elegant bottle.',
-    'fortified': 'A cinematic close-up slow motion shot of a fortified wine bottle with a completely blank dark label, no text or images, rich dark liquid, classic study room setting.'
-  };
-
-  const prompt = prompts[type.toLowerCase()] || 'A cinematic close-up shot of a wine bottle with a completely blank label, no text or images, elegant setting.';
-
-  let operation = await ai.models.generateVideos({
-    model: 'veo-3.1-fast-generate-preview',
-    prompt: prompt,
-    config: {
-      numberOfVideos: 1,
-      resolution: '720p',
-      aspectRatio: '9:16'
-    }
+  const response = await fetch("/api/gemini/video", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type }),
   });
 
-  while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    operation = await ai.operations.getVideosOperation({ operation: operation });
+  if (!response.ok) {
+    const errorData = (await response.json()) as any;
+    throw new Error(errorData.error || "Failed to generate video");
   }
 
-  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-  if (!downloadLink) throw new Error("Failed to generate video");
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
 
-  const videoResponse = await fetch(downloadLink, {
-    method: 'GET',
-    headers: {
-      'x-goog-api-key': apiKey,
-    },
+export async function* chatStream(messages: any[], systemInstruction: string) {
+  const response = await fetch("/api/gemini/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, systemInstruction }),
   });
 
-  const blob = await videoResponse.blob();
-  return URL.createObjectURL(blob);
+  if (!response.ok) {
+    const errorData = (await response.json()) as any;
+    throw new Error(errorData.error || "Failed to chat");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) return;
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    
+    // Parse SSE events
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+            yield data.candidates[0].content.parts[0].text;
+          }
+        } catch (e) {
+          console.error("Failed to parse SSE event", e);
+        }
+      }
+    }
+  }
 }
