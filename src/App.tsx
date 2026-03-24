@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera, ChefHat } from 'lucide-react';
-import { generateWineNotes, extractWineInfoFromImage, getWinePairingForDish } from './services/geminiService';
+import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera, ChefHat, MessageSquare, X, Send } from 'lucide-react';
+import { generateWineNotes, extractWineInfoFromImage, getWinePairingForDish, chatStream } from './services/geminiService';
 import { WineData, WinePairing } from './types';
 import { DecantingTimeLogo } from './components/WineCategoryLogo';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
@@ -16,6 +16,43 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isGrapesExpanded, setIsGrapesExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'model', parts: { text: string }[] }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = { role: 'user' as const, parts: [{ text: chatInput }] };
+    const newMessages = [...chatMessages, userMessage];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const modelMessage = { role: 'model' as const, parts: [{ text: '' }] };
+      setChatMessages(prev => [...prev, modelMessage]);
+
+      const stream = chatStream(newMessages, "你是一位專業的香港侍酒師。請用粵語白話文回答使用者的任何關於葡萄酒、配餐或品酒的問題。語氣要專業、優雅且熱情。");
+      
+      let fullText = '';
+      for await (const chunk of stream) {
+        fullText += chunk;
+        setChatMessages(prev => {
+          const last = prev[prev.length - 1];
+          const rest = prev.slice(0, -1);
+          return [...rest, { ...last, parts: [{ text: fullText }] }];
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setError("聊天時發生錯誤，請稍後再試。");
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   const getFallbackCountryCode = (region: string) => {
     const lowerRegion = region.toLowerCase();
@@ -553,6 +590,77 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Floating Chat Button */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={() => setIsChatOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-wine-800 text-white shadow-2xl flex items-center justify-center z-50 hover:bg-wine-700 transition-colors"
+      >
+        <MessageSquare className="w-6 h-6" />
+      </motion.button>
+
+      {/* Chat Window */}
+      <AnimatePresence>
+        {isChatOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 100, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 100, scale: 0.8 }}
+            className="fixed bottom-24 right-6 w-[90vw] max-w-[400px] h-[60vh] bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl flex flex-col z-50 overflow-hidden backdrop-blur-xl"
+          >
+            {/* Chat Header */}
+            <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-wine-950/20">
+              <div className="flex items-center gap-2">
+                <Wine className="w-5 h-5 text-wine-400" />
+                <span className="font-serif text-white">侍酒師對話</span>
+              </div>
+              <button onClick={() => setIsChatOpen(false)} className="text-neutral-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+              {chatMessages.length === 0 && (
+                <div className="text-center py-10 text-neutral-500">
+                  <Wine className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                  <p className="text-sm">有咩關於葡萄酒嘅問題？即管問我啦！</p>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-wine-800 text-white rounded-tr-none' : 'bg-neutral-800 text-neutral-200 rounded-tl-none'}`}>
+                    {msg.parts[0].text || (isChatLoading && i === chatMessages.length - 1 ? <Loader2 className="w-4 h-4 animate-spin" /> : '')}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Chat Input */}
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-neutral-800 bg-neutral-950/50">
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="輸入訊息..."
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-full py-2 pl-4 pr-12 text-sm text-white focus:outline-none focus:ring-1 focus:ring-wine-600"
+                  disabled={isChatLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={isChatLoading || !chatInput.trim()}
+                  className="absolute right-1.5 w-8 h-8 rounded-full bg-wine-800 flex items-center justify-center text-white disabled:bg-neutral-800 disabled:text-neutral-500 transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

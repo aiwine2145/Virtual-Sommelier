@@ -261,6 +261,33 @@ Food Pairing Rules:
     }
   });
 
+  app.post("/api/chat/stream", async (req, res) => {
+    try {
+      const { messages, systemInstruction } = req.body;
+      const response = await ai.models.generateContentStream({
+        model: "gemini-3-flash-preview",
+        contents: messages,
+        config: {
+          systemInstruction: systemInstruction || "You are a helpful assistant.",
+        },
+      });
+
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Transfer-Encoding", "chunked");
+
+      for await (const chunk of response) {
+        const text = chunk.text;
+        if (text) {
+          res.write(text);
+        }
+      }
+      res.end();
+    } catch (error: any) {
+      console.error("Chat Stream Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
