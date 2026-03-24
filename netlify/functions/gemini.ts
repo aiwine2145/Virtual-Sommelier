@@ -277,6 +277,7 @@ async function handlePairing(body: any, apiKey: string) {
     headers: { "Content-Type": "text/event-stream" }
   });
 }
+async function handleVideo(body: any, apiKey: string) {
   const { type } = body;
   const prompts: Record<string, string> = {
     'red': 'A cinematic close-up slow motion shot of a red wine bottle with a completely blank white label, no text or images, standing on a dark wooden table in a dimly lit cellar. Elegant lighting.',
