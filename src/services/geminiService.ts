@@ -31,8 +31,8 @@ export async function generateWineNotes(wineName: string): Promise<WineData> {
 }
 
 export async function* getWinePairingForDish(dishName: string, excludedWineries: string[] = []): AsyncGenerator<string> {
-  // 精準設定為 /api/chat，Netlify 會根據 netlify.toml 轉發至 functions
-  const response = await fetch("/api/chat", {
+  // 放棄依賴 netlify.toml 轉發，直接呼叫 Netlify Function 的絕對路徑
+  const response = await fetch("/.netlify/functions/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -98,8 +98,8 @@ export async function generateWineCategoryVideo(type: string): Promise<string> {
 }
 
 export async function* chatStream(messages: any[], systemInstruction?: string): AsyncGenerator<string> {
-  // 精準設定為 /api/chat，Netlify 會根據 netlify.toml 轉發至 functions
-  const response = await fetch("/api/chat", {
+  // 直接呼叫 Netlify Function 的絕對路徑
+  const response = await fetch("/.netlify/functions/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
