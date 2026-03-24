@@ -12,6 +12,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [wineData, setWineData] = useState<WineData | null>(null);
   const [winePairingData, setWinePairingData] = useState<WinePairing | null>(null);
+  const [pairingStreamText, setPairingStreamText] = useState<string>('');
   const [excludedWineries, setExcludedWineries] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isGrapesExpanded, setIsGrapesExpanded] = useState(false);
@@ -93,6 +94,7 @@ export default function App() {
     setError(null);
     setWineData(null);
     setWinePairingData(null);
+    setPairingStreamText('');
     setIsGrapesExpanded(false);
 
     try {
@@ -100,11 +102,11 @@ export default function App() {
         const data = await generateWineNotes(query);
         setWineData(data);
       } else {
-        const data = await getWinePairingForDish(query, excludedWineries);
-        setWinePairingData(data);
-        if (data.recommendations) {
-          const newWineries = data.recommendations.map(r => r.winery);
-          setExcludedWineries(prev => [...prev, ...newWineries]);
+        const stream = getWinePairingForDish(query, excludedWineries);
+        let fullText = '';
+        for await (const chunk of stream) {
+          fullText += chunk;
+          setPairingStreamText(fullText);
         }
       }
     } catch (err) {
@@ -304,6 +306,27 @@ export default function App() {
             >
               <Loader2 className="w-10 h-10 animate-spin mb-4" />
               <p className="font-serif italic text-neutral-400">{searchMode === 'wine' ? '幫你醒緊酒，準備緊筆記...' : '侍酒師正在為您尋找完美搭配...'}</p>
+            </motion.div>
+          )}
+
+          {pairingStreamText && (
+            <motion.div
+              key="pairing-results-stream"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="bg-neutral-900/50 border border-neutral-800/80 rounded-3xl p-8 md:p-10 backdrop-blur-sm space-y-6"
+            >
+              <div className="flex items-center gap-3">
+                <ChefHat className="w-8 h-8 text-wine-400" />
+                <h2 className="text-3xl font-serif text-white">配餐推薦</h2>
+              </div>
+              <div className="space-y-4">
+                <p className="text-neutral-400">為您的菜色 <span className="text-white font-semibold">"{query}"</span> 推薦以下建議：</p>
+                <div className="bg-neutral-950 rounded-2xl p-6 border border-neutral-800">
+                  <p className="text-neutral-300 leading-relaxed whitespace-pre-wrap">{pairingStreamText}</p>
+                </div>
+              </div>
             </motion.div>
           )}
 

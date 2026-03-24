@@ -6,7 +6,12 @@ export default async (request: Request, context: Context) => {
   }
 
   try {
-    const { messages, systemInstruction } = await request.json();
+    const body = await request.json();
+    const { messages, systemInstruction, prompt } = body;
+    
+    // If 'prompt' is provided instead of 'messages', convert it to the expected format
+    const contents = messages || (prompt ? [{ role: "user", parts: [{ text: prompt }] }] : []);
+    
     const apiKey = process.env.GEMINI_API_KEY;
     const model = "gemini-3-flash-preview";
     
@@ -19,7 +24,7 @@ export default async (request: Request, context: Context) => {
         "x-goog-api-key": apiKey as string,
       },
       body: JSON.stringify({
-        contents: messages,
+        contents: contents,
         systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
       }),
     });
