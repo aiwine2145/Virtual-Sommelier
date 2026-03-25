@@ -102,8 +102,10 @@ export default function App() {
         const data = await generateWineNotes(query);
         setWineData(data);
       } else {
-        const data = await getWinePairingForDish(query, excludedWineries);
-        setWinePairingData(data);
+        const generator = getWinePairingForDish(query, excludedWineries);
+        for await (const chunk of generator) {
+          setPairingStreamText(prev => prev + chunk);
+        }
       }
     } catch (err) {
       console.error(err);

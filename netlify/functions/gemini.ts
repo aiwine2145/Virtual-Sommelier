@@ -91,7 +91,7 @@ async function handleExtract(body: any, apiKey: string) {
   };
 
   const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     {
       method: "POST",
       headers: {
@@ -102,9 +102,11 @@ async function handleExtract(body: any, apiKey: string) {
     }
   );
 
-  return new Response(response.body, {
-    headers: { "Content-Type": "text/event-stream" }
-  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Gemini API error");
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  return Response.json(JSON.parse(text));
 }
 
 async function handleNotes(body: any, apiKey: string) {
@@ -184,7 +186,7 @@ Food Pairing Rules:
   };
 
   const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     {
       method: "POST",
       headers: {
@@ -195,9 +197,11 @@ Food Pairing Rules:
     }
   );
 
-  return new Response(response.body, {
-    headers: { "Content-Type": "text/event-stream" }
-  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Gemini API error");
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  return Response.json(JSON.parse(text));
 }
 
 async function handlePairing(body: any, apiKey: string) {
@@ -262,7 +266,7 @@ async function handlePairing(body: any, apiKey: string) {
   };
 
   const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     {
       method: "POST",
       headers: {
@@ -273,9 +277,11 @@ async function handlePairing(body: any, apiKey: string) {
     }
   );
 
-  return new Response(response.body, {
-    headers: { "Content-Type": "text/event-stream" }
-  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Gemini API error");
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  return Response.json(JSON.parse(text));
 }
 async function handleVideo(body: any, apiKey: string) {
   const { type } = body;
