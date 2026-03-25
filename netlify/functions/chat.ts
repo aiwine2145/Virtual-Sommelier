@@ -13,7 +13,14 @@ export default async (request: Request, context: Context) => {
     const contents = messages || (prompt ? [{ role: "user", parts: [{ text: prompt }] }] : []);
     
     const apiKey = process.env.GEMINI_API_KEY;
-    const model = "gemini-3-flash-preview";
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not set" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const model = "gemini-2.5-flash";
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
 
@@ -21,7 +28,7 @@ export default async (request: Request, context: Context) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": apiKey as string,
+        "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
         contents: contents,
