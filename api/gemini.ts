@@ -61,10 +61,12 @@ export default async function handler(req: any, res: any) {
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 Include vintage performance/recommendations, estimated price in HKD (750ml), and recommended decanting time (if none, state '無需醒酒').
-If unknown, provide generic examples. Language: Cantonese (Traditional Chinese).
-Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese cuisine. Cantonese/Chinese pairings must not exceed 50% of total suggestions.`,
+If unknown, provide generic examples. 
+CRITICAL RULE: ALL descriptions MUST be in authentic Cantonese (粵語白話文). Use terms like '士多啤梨' (strawberry), '車厘子' (cherry), '黑加侖子' (blackcurrant), '單寧' (tannin). Do NOT use standard written Chinese.
+Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese cuisine.
+Analysis Rules: You MUST score the 5 analysis attributes (acidity, sweetness, body, complexity, balance) strictly on a scale of 1 to 10. For example, a dry red wine like Lafite should have very low sweetness (e.g., 1-2).`,
         config: {
-          systemInstruction: "You are an expert sommelier with deep knowledge of wine regions, grape varieties, tasting profiles, and food pairings. Your tone is elegant, informative, and passionate about wine. You must reply in Cantonese (Traditional Chinese, 粵語白話文).",
+          systemInstruction: "You are an expert sommelier in Hong Kong. Your tone is elegant and informative. You MUST output ALL descriptions, notes, and pairing suggestions in fluent Cantonese (Traditional Chinese, 粵語白話文).",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -76,26 +78,27 @@ Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese
               mapSearchQuery: { type: Type.STRING },
               estimatedPriceHKD: { type: Type.STRING },
               grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-              description: { type: Type.STRING },
+              description: { type: Type.STRING, description: "A short, elegant summary of the wine's character in Cantonese (粵語白話文)." },
               wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
               tastingNotes: {
                 type: Type.OBJECT,
                 properties: {
-                  appearance: { type: Type.STRING },
-                  aroma: { type: Type.STRING },
-                  palate: { type: Type.STRING },
-                  finish: { type: Type.STRING }
+                  appearance: { type: Type.STRING, description: "Visual characteristics in Cantonese (粵語白話文)." },
+                  aroma: { type: Type.STRING, description: "Olfactory characteristics in Cantonese (粵語白話文)." },
+                  palate: { type: Type.STRING, description: "Taste characteristics in Cantonese (粵語白話文)." },
+                  finish: { type: Type.STRING, description: "The length and nature of the aftertaste in Cantonese (粵語白話文)." }
                 },
                 required: ["appearance", "aroma", "palate", "finish"]
               },
               analysis: {
                 type: Type.OBJECT,
+                description: "A numerical analysis of the wine's characteristics on a strict scale of 1 to 10.",
                 properties: {
-                  acidity: { type: Type.NUMBER },
-                  sweetness: { type: Type.NUMBER },
-                  body: { type: Type.NUMBER },
-                  complexity: { type: Type.NUMBER },
-                  balance: { type: Type.NUMBER }
+                  acidity: { type: Type.NUMBER, description: "Acidity level (strictly 1-10)" },
+                  sweetness: { type: Type.NUMBER, description: "Sweetness level (strictly 1-10). Dry wines should be 1-2." },
+                  body: { type: Type.NUMBER, description: "Body/Weight level (strictly 1-10)" },
+                  complexity: { type: Type.NUMBER, description: "Complexity level (strictly 1-10)" },
+                  balance: { type: Type.NUMBER, description: "Overall balance level (strictly 1-10)" }
                 },
                 required: ["acidity", "sweetness", "body", "complexity", "balance"]
               },
@@ -104,13 +107,13 @@ Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese
                 properties: {
                   type: { type: Type.STRING, enum: ['specific', 'general'] },
                   year: { type: Type.STRING },
-                  description: { type: Type.STRING }
+                  description: { type: Type.STRING, description: "Description of the vintage performance in Cantonese (粵語白話文)." }
                 },
                 required: ["type", "description"]
               },
               rating: { type: Type.NUMBER },
-              decantingTime: { type: Type.STRING },
-              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING } }
+              decantingTime: { type: Type.STRING, description: "Recommended decanting time in Cantonese (粵語白話文)." },
+              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Food pairing suggestions in Cantonese (粵語白話文)." }
             },
             required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "estimatedPriceHKD", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
           }
@@ -133,9 +136,10 @@ Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese
 a. 搜尋範圍：香港本地葡萄酒網店及零售店。
 b. 酒款選擇：盡量推薦不同種類的酒款。
 c. 匹配度：要求極高。
-d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。`,
+d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
+CRITICAL RULE: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).`,
         config: {
-          systemInstruction: "You are a top sommelier based in Hong Kong. You provide expert, highly accurate wine pairing recommendations... You must reply in JSON format. The 'reason' field must be written in Cantonese.",
+          systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format. The 'reason' field MUST be written in authentic Cantonese (Traditional Chinese, 粵語白話文).",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -148,7 +152,7 @@ d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excluded
                     winery: { type: Type.STRING },
                     wine_name: { type: Type.STRING },
                     vintage: { type: Type.STRING },
-                    reason: { type: Type.STRING },
+                    reason: { type: Type.STRING, description: "Recommendation reason in Cantonese (粵語白話文)." },
                     wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
                     region: { type: Type.STRING },
                     countryCode: { type: Type.STRING },
@@ -160,7 +164,7 @@ d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excluded
                   required: ["winery", "wine_name", "vintage", "reason", "wineType", "region", "countryCode", "estimatedPriceHKD", "rating", "grapeVarieties", "decantingTime"]
                 }
               },
-              refusalReason: { type: Type.STRING }
+              refusalReason: { type: Type.STRING, description: "Refusal reason in Cantonese (粵語白話文) if the dish is invalid." }
             }
           }
         }

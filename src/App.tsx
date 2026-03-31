@@ -293,12 +293,13 @@ export default function App() {
                   <div className="space-y-6">
                     {winePairingData.recommendations?.map((rec, index) => (
                       <div key={index} className="bg-neutral-950 rounded-2xl p-6 border border-neutral-800 space-y-4">
-                        <div className="flex justify-between items-start">
+                        {/* ✅ 加入 gap-4 並為右側標籤加入 shrink-0 whitespace-nowrap 防變形 */}
+                        <div className="flex justify-between items-start gap-4">
                           <div>
                             <h3 className="text-2xl font-serif text-wine-400 mb-1">{rec.wine_name}</h3>
                             <p className="text-neutral-300 font-medium">{rec.winery} ({rec.vintage})</p>
                           </div>
-                          <div className="bg-wine-950/50 px-3 py-1 rounded-full border border-wine-900/50 text-xs font-semibold tracking-wider uppercase text-wine-400">
+                          <div className="shrink-0 whitespace-nowrap bg-wine-950/50 px-3 py-1 rounded-full border border-wine-900/50 text-xs font-semibold tracking-wider uppercase text-wine-400">
                             {rec.wineType ? getWineTypeName(rec.wineType) : '葡萄酒'}
                           </div>
                         </div>
@@ -349,7 +350,8 @@ export default function App() {
 
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
                     
-                    <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-sm font-medium tracking-wider text-white">
+                    {/* ✅ 加入 shrink-0 whitespace-nowrap 防變形 */}
+                    <div className="shrink-0 whitespace-nowrap absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-sm font-medium tracking-wider text-white">
                       {getWineTypeName(wineData.wineType)}
                     </div>
 
@@ -387,14 +389,15 @@ export default function App() {
 
                 <div className="relative z-10 flex-1 w-full">
                   <div className="flex flex-wrap items-center gap-3 mb-4 text-xs font-semibold tracking-wider uppercase text-wine-400">
-                    <span className="flex items-center gap-1.5 bg-wine-950/50 px-3 py-1 rounded-full border border-wine-900/50">
+                    {/* ✅ 加入 shrink-0 whitespace-nowrap 防變形 */}
+                    <span className="shrink-0 whitespace-nowrap flex items-center gap-1.5 bg-wine-950/50 px-3 py-1 rounded-full border border-wine-900/50">
                       <MapPin className="w-3.5 h-3.5" /> {wineData.region}
                     </span>
-                    <span className="flex items-center gap-1.5 bg-neutral-800/50 px-3 py-1 rounded-full border border-neutral-700/50 text-neutral-300">
+                    <span className="shrink-0 whitespace-nowrap flex items-center gap-1.5 bg-neutral-800/50 px-3 py-1 rounded-full border border-neutral-700/50 text-neutral-300">
                       <Calendar className="w-3.5 h-3.5" /> {wineData.vintage}
                     </span>
                     {wineData.estimatedPriceHKD && (
-                      <span className="flex items-center gap-1.5 bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-900/50 text-emerald-400">
+                      <span className="shrink-0 whitespace-nowrap flex items-center gap-1.5 bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-900/50 text-emerald-400">
                         <Tag className="w-3.5 h-3.5" /> Wine-Searcher 參考售價: {wineData.estimatedPriceHKD}
                       </span>
                     )}
