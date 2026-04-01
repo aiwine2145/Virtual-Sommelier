@@ -62,11 +62,8 @@ export default async function handler(req: any, res: any) {
 CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
 CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
 CRITICAL RULE 3 (RATING): The overall 'rating' MUST be a 100-point scale score.
-CRITICAL RULE 4 (VINTAGE): If the search includes a specific year, set type to 'specific', provide the 'year', and give a CONCISE review (1-2 sentences). If no year, set type to 'general' and concisely list excellent vintages.
-CRITICAL RULE 5 (DECANTING): Differentiate by wine type! 
-- RED: Factor in age, grape, and tier. Premium structured old reds (First Growths, Barolo) need 1-2+ hours. Fragile/cheaper old reds get 15-30 mins. 
-- WHITE/ROSE: Generally '無需醒酒' or just 15-30 mins for complex premium whites. 
-- CHAMPAGNE/SPARKLING: MUST be '無需醒酒' (Breathe in glass only, to preserve bubbles).`,
+CRITICAL RULE 4 (VINTAGE): If a specific year is searched, set type to 'specific', provide the 'year', and write a professional review (about 3 sentences) detailing the vintage evaluation, weather conditions, and their impact on the wine's profile. If no year, set type to 'general' and list excellent vintages with brief reasons.
+CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured old reds (First Growths, Barolo) need 1-2+ hours. Fragile/cheaper old reds get 15-30 mins. WHITE/ROSE/CHAMPAGNE: Usually '無需醒酒' or max 15-30 mins.`,
         config: {
           temperature: 0.1, 
           systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions in authentic Hong Kong Cantonese.",
@@ -111,7 +108,7 @@ CRITICAL RULE 5 (DECANTING): Differentiate by wine type!
                 properties: {
                   type: { type: Type.STRING, enum: ['specific', 'general'] },
                   year: { type: Type.STRING },
-                  description: { type: Type.STRING, description: "簡短精煉的年份描述 (粵語)" }
+                  description: { type: Type.STRING, description: "年份描述 (約3句)：單一年份請包含評價、氣候及對風味的影響；一般年份請列出並解釋優秀年份 (粵語)" }
                 },
                 required: ["type", "description"]
               },
