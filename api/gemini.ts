@@ -59,11 +59,14 @@ export default async function handler(req: any, res: any) {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
-CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese (純正香港粵語白話文).
-CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD) and the volume in 'capacity'.
-CRITICAL RULE 3 (RATING): The overall 'rating' MUST be a 100-point scale score based on Authority -> Vivino Conversion -> Sommelier Estimate.
-CRITICAL RULE 4 (VINTAGE): ALWAYS provide a list of excellent vintages for that wine's region and describe them (優秀年份推薦模式).
-CRITICAL RULE 5 (DECANTING): Older vintages require LESS decanting time. Exceptions: highly tannic Italian wines.`,
+CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
+CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
+CRITICAL RULE 3 (RATING): The overall 'rating' MUST be a 100-point scale score.
+CRITICAL RULE 4 (VINTAGE): If the search includes a specific year, set type to 'specific', provide the 'year', and give a CONCISE review (1-2 sentences). If no year, set type to 'general' and concisely list excellent vintages.
+CRITICAL RULE 5 (DECANTING): Differentiate by wine type! 
+- RED: Factor in age, grape, and tier. Premium structured old reds (First Growths, Barolo) need 1-2+ hours. Fragile/cheaper old reds get 15-30 mins. 
+- WHITE/ROSE: Generally '無需醒酒' or just 15-30 mins for complex premium whites. 
+- CHAMPAGNE/SPARKLING: MUST be '無需醒酒' (Breathe in glass only, to preserve bubbles).`,
         config: {
           temperature: 0.1, 
           systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions in authentic Hong Kong Cantonese.",
@@ -77,11 +80,10 @@ CRITICAL RULE 5 (DECANTING): Older vintages require LESS decanting time. Excepti
               countryCode: { type: Type.STRING },
               mapSearchQuery: { type: Type.STRING, description: "Search query for Google Maps to find the EXACT winery. ONLY use region if unknown." },
               mapLocationType: { type: Type.STRING, enum: ['winery', 'region'] },
-              // 🌟 減壓策略一：價格與容量分開，讓前端排版
               price: { type: Type.NUMBER, description: "HKD Price (Number only)" },
               capacity: { type: Type.STRING, description: "e.g., 750ml, 375ml" },
               grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-              description: { type: Type.STRING, description: "摘要 (粵語)" }, // 🌟 減壓策略三：極簡化
+              description: { type: Type.STRING, description: "摘要 (粵語)" }, 
               wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
               tastingNotes: {
                 type: Type.OBJECT,
@@ -96,20 +98,22 @@ CRITICAL RULE 5 (DECANTING): Older vintages require LESS decanting time. Excepti
               analysis: {
                 type: Type.OBJECT,
                 properties: {
-                  acidity: { type: Type.NUMBER },
-                  sweetness: { type: Type.NUMBER },
-                  body: { type: Type.NUMBER },
-                  complexity: { type: Type.NUMBER },
-                  balance: { type: Type.NUMBER }
+                  acidity: { type: Type.NUMBER, description: "Strictly 1-10" },
+                  sweetness: { type: Type.NUMBER, description: "Strictly 1-10" },
+                  body: { type: Type.NUMBER, description: "Strictly 1-10" },
+                  complexity: { type: Type.NUMBER, description: "Strictly 1-10" },
+                  balance: { type: Type.NUMBER, description: "Strictly 1-10" }
                 },
                 required: ["acidity", "sweetness", "body", "complexity", "balance"]
               },
               vintageNotes: {
                 type: Type.OBJECT,
                 properties: {
-                  description: { type: Type.STRING, description: "優秀年份推薦 (粵語)" }
+                  type: { type: Type.STRING, enum: ['specific', 'general'] },
+                  year: { type: Type.STRING },
+                  description: { type: Type.STRING, description: "簡短精煉的年份描述 (粵語)" }
                 },
-                required: ["description"]
+                required: ["type", "description"]
               },
               rating: { type: Type.NUMBER, description: "100-point scale" },
               decantingTime: { type: Type.STRING, description: "醒酒時間 (粵語)" },
@@ -137,8 +141,8 @@ CRITICAL RULE 5 (DECANTING): Older vintages require LESS decanting time. Excepti
         model: "gemini-2.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
 CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
-CRITICAL RULE 2: Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD) and the volume in 'capacity'.
-CRITICAL RULE 3: For 'rating', provide a 100-point scale score based on Authority -> Vivino Conversion -> Region/Price Estimate.`,
+CRITICAL RULE 2: Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
+CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
         config: {
           temperature: 0.8, 
           systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format.",

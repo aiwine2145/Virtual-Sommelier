@@ -303,7 +303,6 @@ export default function App() {
                         <div className="flex flex-wrap gap-4 text-sm text-neutral-400">
                           {rec.region && <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {rec.region}</span>}
                           {rec.rating && <span className="flex items-center gap-1.5"><Star className="w-4 h-4 text-wine-400" /> {rec.rating}/100</span>}
-                          {/* 🌟 格式化配餐的價格標籤 */}
                           {(rec as any).price && (
                             <span className="flex items-center gap-1.5">
                               <Tag className="w-4 h-4" /> HK${(rec as any).price.toLocaleString('en-US')} ({(rec as any).capacity || '750ml'})
@@ -391,7 +390,6 @@ export default function App() {
                     <span className="shrink-0 whitespace-nowrap flex items-center gap-1.5 bg-neutral-800/50 px-3 py-1 rounded-full border border-neutral-700/50 text-neutral-300">
                       <Calendar className="w-3.5 h-3.5" /> {wineData.vintage}
                     </span>
-                    {/* 🌟 修改：由前端負責價格與容量的格式化排版 */}
                     {(wineData as any).price && (
                       <span className="shrink-0 whitespace-nowrap flex items-center gap-1.5 bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-900/50 text-emerald-400">
                         <Tag className="w-3.5 h-3.5" /> 市場參考價: HK${(wineData as any).price.toLocaleString('en-US')} ({(wineData as any).capacity || '750ml'})
@@ -519,7 +517,9 @@ export default function App() {
                   <div className="flex items-center gap-3 mb-4">
                     <Calendar className="w-6 h-6 text-wine-400" />
                     <h3 className="font-serif text-2xl text-white">
-                      產區優秀年份
+                      {wineData.vintageNotes.type === 'specific' 
+                        ? `${wineData.vintageNotes.year || wineData.vintage} 年份表現` 
+                        : '產區優秀年份'}
                     </h3>
                   </div>
                   <p className="text-neutral-300 font-light leading-relaxed">

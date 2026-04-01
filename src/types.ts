@@ -24,6 +24,8 @@ export interface WineData {
     balance: number;
   };
   vintageNotes: {
+    type: 'specific' | 'general';
+    year?: string;
     description: string;
   };
   rating: number;
