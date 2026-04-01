@@ -22,7 +22,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (POST，不快取)
+    // 任務 1：圖片辨識 (POST，不快取，低溫 0.1)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
@@ -57,7 +57,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // ==========================================
-    // 任務 2：生成酒記 (GET，自動快取 30 天)
+    // 任務 2：生成酒記 (GET，自動快取 30 天，低溫 0.1)
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
@@ -65,12 +65,17 @@ export default async function handler(req: any, res: any) {
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 Include vintage performance/recommendations, and recommended decanting time.
-CRITICAL RULE 1: ALL text fields MUST be in highly authentic Hong Kong Cantonese (純正香港粵語白話文). DO NOT use written Chinese (書面語). Use terms like '士多啤梨', '車厘子', '呢支酒', '好有層次'.
-CRITICAL RULE 2 (PRICE): For estimatedPriceHKD, you MUST provide a single median price formatted exactly as 'HK$XXXX'. No ranges. Assume 750ml. If special capacity, add '(375ml)'.
-Analysis Rules: Score acidity, sweetness, body, complexity, balance strictly on a scale of 1 to 10. Dry wines must have sweetness 1-2.`,
+CRITICAL RULE 1 (LANGUAGE): ALL text fields MUST be in highly authentic Hong Kong Cantonese (純正香港粵語白話文). DO NOT use written Chinese. Use terms like '士多啤梨', '車厘子', '呢支酒', '好有層次'.
+CRITICAL RULE 2 (PRICE): For estimatedPriceHKD, provide a single median price formatted exactly as 'HK$XXXX'. No ranges. Assume 750ml. If special capacity, add '(375ml)'.
+CRITICAL RULE 3 (RATING): The overall 'rating' MUST be a traditional 100-point scale score (e.g., 85-100). Follow this strict priority: 
+  Priority 1: Use real-world authoritative critic scores (e.g., Robert Parker, James Suckling). 
+  Priority 2: If only Vivino is available, automatically mathematically convert it to the 100-point scale. 
+  Priority 3: If completely unrated, provide a reasonable sommelier estimated score based on its region and estimated price. 
+  DO NOT use a 1-10 scale for the overall rating.
+Analysis Rules: Only for the 5 radar chart attributes (acidity, sweetness, body, complexity, balance), score them strictly on a scale of 1 to 10. Dry wines must have sweetness 1-2.`,
         config: {
           temperature: 0.1, 
-          systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions, notes, and pairing suggestions in authentic Hong Kong Cantonese (粵語白話文).",
+          systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions in authentic Hong Kong Cantonese. You MUST use a standard 100-point scale for the overall wine rating following the strict priority rules.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -115,7 +120,7 @@ Analysis Rules: Score acidity, sweetness, body, complexity, balance strictly on 
                 },
                 required: ["type", "description"]
               },
-              rating: { type: Type.NUMBER },
+              rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate. DO NOT use a 1-10 scale." },
               decantingTime: { type: Type.STRING, description: "MUST be in Cantonese (粵語)." },
               foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "MUST be in Cantonese (粵語)." }
             },
@@ -125,7 +130,7 @@ Analysis Rules: Score acidity, sweetness, body, complexity, balance strictly on 
       });
       const jsonStr = response.text?.trim() || "{}";
       
-      // 🌟 Vercel 終極魔法：將這份結果在全球 CDN 快取 30 天 (2592000 秒)！
+      // 快取 30 天
       if (req.method === 'GET') {
         res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate');
       }
@@ -134,7 +139,7 @@ Analysis Rules: Score acidity, sweetness, body, complexity, balance strictly on 
     }
 
     // ==========================================
-    // 任務 3：配餐推薦 (POST，不快取，高溫保持驚喜)
+    // 任務 3：配餐推薦 (POST，不快取，高溫 0.8)
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
@@ -146,10 +151,12 @@ Analysis Rules: Score acidity, sweetness, body, complexity, balance strictly on 
 a. 搜尋範圍：香港本地葡萄酒網店及零售店。
 b. 酒款選擇：盡量推薦不同種類的酒款。
 c. 匹配度：要求極高。
-d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。`,
+d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
+CRITICAL RULE 1 (LANGUAGE): The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
+CRITICAL RULE 2 (RATING): For the 'rating' field, you MUST provide a 100-point scale score. Follow this strict priority: 1. Real authoritative scores (e.g., Robert Parker, James Suckling). 2. If only Vivino is available, mathematically convert it to the 100-point scale. 3. If completely unrated, provide a reasonable sommelier estimated score based on its region and estimated price. DO NOT use a 10-point scale.`,
         config: {
-          temperature: 0.8, // 高溫
-          systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format. The 'reason' field MUST be written in authentic Cantonese (Traditional Chinese, 粵語白話文).",
+          temperature: 0.8, 
+          systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format. The 'reason' field MUST be written in authentic Cantonese. You MUST use a standard 100-point scale (85-100) for wine ratings following the authority/Vivino/estimation rules.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -167,14 +174,14 @@ d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excluded
                     region: { type: Type.STRING },
                     countryCode: { type: Type.STRING },
                     estimatedPriceHKD: { type: Type.STRING },
-                    rating: { type: Type.NUMBER },
+                    rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate. DO NOT use a 1-10 scale." },
                     grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
                     decantingTime: { type: Type.STRING }
                   },
                   required: ["winery", "wine_name", "vintage", "reason", "wineType", "region", "countryCode", "estimatedPriceHKD", "rating", "grapeVarieties", "decantingTime"]
                 }
               },
-              refusalReason: { type: Type.STRING, description: "Refusal reason in Cantonese (粵語白話文) if the dish is invalid." }
+              refusalReason: { type: Type.STRING, description: "Refusal reason in Cantonese (粵語) if the dish is invalid." }
             }
           }
         }
