@@ -58,7 +58,12 @@ export default async function handler(req: any, res: any) {
       const { wineName } = payload;
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".`,
+        contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
+CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese (純正香港粵語白話文).
+CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD) and the volume in 'capacity'.
+CRITICAL RULE 3 (RATING): The overall 'rating' MUST be a 100-point scale score based on Authority -> Vivino Conversion -> Sommelier Estimate.
+CRITICAL RULE 4 (VINTAGE): ALWAYS provide a list of excellent vintages for that wine's region and describe them (優秀年份推薦模式).
+CRITICAL RULE 5 (DECANTING): Older vintages require LESS decanting time. Exceptions: highly tannic Italian wines.`,
         config: {
           temperature: 0.1, 
           systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions in authentic Hong Kong Cantonese.",
@@ -70,26 +75,26 @@ export default async function handler(req: any, res: any) {
               vintage: { type: Type.STRING },
               region: { type: Type.STRING },
               countryCode: { type: Type.STRING },
-              // 🌟 修改：精確指示 AI 尋找地圖的方法，並判定是酒莊還是產區
-              mapSearchQuery: { type: Type.STRING, description: "Search query for Google Maps to find the EXACT winery (e.g., 'Château Lafite Rothschild, Pauillac'). ONLY use the region if the specific winery is completely unknown or generic." },
-              mapLocationType: { type: Type.STRING, enum: ['winery', 'region'], description: "Classify if the mapSearchQuery points to a specific 'winery' or just a general 'region'." },
-              estimatedPriceHKD: { type: Type.STRING, description: "Strictly format as 'HK$XXXX'. No ranges." },
+              mapSearchQuery: { type: Type.STRING, description: "Search query for Google Maps to find the EXACT winery. ONLY use region if unknown." },
+              mapLocationType: { type: Type.STRING, enum: ['winery', 'region'] },
+              // 🌟 減壓策略一：價格與容量分開，讓前端排版
+              price: { type: Type.NUMBER, description: "HKD Price (Number only)" },
+              capacity: { type: Type.STRING, description: "e.g., 750ml, 375ml" },
               grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-              description: { type: Type.STRING, description: "Wine summary in Cantonese (粵語)." },
+              description: { type: Type.STRING, description: "摘要 (粵語)" }, // 🌟 減壓策略三：極簡化
               wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
               tastingNotes: {
                 type: Type.OBJECT,
                 properties: {
-                  appearance: { type: Type.STRING, description: "Appearance MUST be in Cantonese (粵語)." },
-                  aroma: { type: Type.STRING, description: "Aroma MUST be in Cantonese (粵語)." },
-                  palate: { type: Type.STRING, description: "Palate MUST be in Cantonese (粵語)." },
-                  finish: { type: Type.STRING, description: "Finish MUST be in Cantonese (粵語)." }
+                  appearance: { type: Type.STRING, description: "外觀 (粵語)" },
+                  aroma: { type: Type.STRING, description: "香氣 (粵語)" },
+                  palate: { type: Type.STRING, description: "口感 (粵語)" },
+                  finish: { type: Type.STRING, description: "餘韻 (粵語)" }
                 },
                 required: ["appearance", "aroma", "palate", "finish"]
               },
               analysis: {
                 type: Type.OBJECT,
-                description: "Analysis on a strict scale of 1 to 10.",
                 properties: {
                   acidity: { type: Type.NUMBER },
                   sweetness: { type: Type.NUMBER },
@@ -102,18 +107,15 @@ export default async function handler(req: any, res: any) {
               vintageNotes: {
                 type: Type.OBJECT,
                 properties: {
-                  type: { type: Type.STRING, enum: ['specific', 'general'] },
-                  year: { type: Type.STRING },
-                  description: { type: Type.STRING, description: "MUST be in Cantonese (粵語)." }
+                  description: { type: Type.STRING, description: "優秀年份推薦 (粵語)" }
                 },
-                required: ["type", "description"]
+                required: ["description"]
               },
-              rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate. DO NOT use a 1-10 scale." },
-              decantingTime: { type: Type.STRING, description: "MUST be in Cantonese (粵語)." },
-              // 🌟 修改：精確指示配餐數量與中菜比例
-              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Provide 4 to 6 highly curated food pairings in Cantonese (粵語). At least 1 or 2 MUST be classic Cantonese/Chinese dishes, but Chinese dishes must NOT exceed 50% of the list. Do not force 8 suggestions if 4-6 are perfect." }
+              rating: { type: Type.NUMBER, description: "100-point scale" },
+              decantingTime: { type: Type.STRING, description: "醒酒時間 (粵語)" },
+              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4-6項配餐, 包含1-2道中菜 (粵語)" }
             },
-            required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "mapLocationType", "estimatedPriceHKD", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
+            required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "mapLocationType", "price", "capacity", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
           }
         }
       });
@@ -133,7 +135,10 @@ export default async function handler(req: any, res: any) {
       const { dishName, excludedWineries } = payload;
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。`,
+        contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
+CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
+CRITICAL RULE 2: Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD) and the volume in 'capacity'.
+CRITICAL RULE 3: For 'rating', provide a 100-point scale score based on Authority -> Vivino Conversion -> Region/Price Estimate.`,
         config: {
           temperature: 0.8, 
           systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format.",
@@ -149,19 +154,20 @@ export default async function handler(req: any, res: any) {
                     winery: { type: Type.STRING },
                     wine_name: { type: Type.STRING },
                     vintage: { type: Type.STRING },
-                    reason: { type: Type.STRING, description: "Recommendation reason in Cantonese (粵語白話文)." },
+                    reason: { type: Type.STRING, description: "推薦理由 (粵語)" },
                     wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
                     region: { type: Type.STRING },
                     countryCode: { type: Type.STRING },
-                    estimatedPriceHKD: { type: Type.STRING },
-                    rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate." },
+                    price: { type: Type.NUMBER, description: "HKD Price (Number only)" },
+                    capacity: { type: Type.STRING, description: "e.g., 750ml, 375ml" },
+                    rating: { type: Type.NUMBER, description: "100-point scale" },
                     grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    decantingTime: { type: Type.STRING }
+                    decantingTime: { type: Type.STRING, description: "醒酒時間 (粵語)" }
                   },
-                  required: ["winery", "wine_name", "vintage", "reason", "wineType", "region", "countryCode", "estimatedPriceHKD", "rating", "grapeVarieties", "decantingTime"]
+                  required: ["winery", "wine_name", "vintage", "reason", "wineType", "region", "countryCode", "price", "capacity", "rating", "grapeVarieties", "decantingTime"]
                 }
               },
-              refusalReason: { type: Type.STRING, description: "Refusal reason in Cantonese (粵語) if the dish is invalid." }
+              refusalReason: { type: Type.STRING, description: "拒絕理由 (粵語)" }
             }
           }
         }

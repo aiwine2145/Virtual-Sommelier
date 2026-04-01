@@ -4,7 +4,9 @@ export interface WineData {
   region: string;
   countryCode: string;
   mapSearchQuery: string;
-  estimatedPriceHKD: string;
+  mapLocationType: 'winery' | 'region';
+  price: number;
+  capacity: string;
   grapeVarieties: string[];
   description: string;
   wineType: 'red' | 'white' | 'sparkling' | 'champagne' | 'rose' | 'sweet' | 'fortified' | 'other';
@@ -22,8 +24,6 @@ export interface WineData {
     balance: number;
   };
   vintageNotes: {
-    type: 'specific' | 'general';
-    year?: string;
     description: string;
   };
   rating: number;
@@ -39,7 +39,8 @@ export interface WineRecommendation {
   wineType: 'red' | 'white' | 'sparkling' | 'champagne' | 'rose' | 'sweet' | 'fortified' | 'other';
   region: string;
   countryCode: string;
-  estimatedPriceHKD: string;
+  price: number;
+  capacity: string;
   rating: number;
   grapeVarieties: string[];
   decantingTime: string;
