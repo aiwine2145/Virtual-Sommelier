@@ -18,7 +18,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (使用最強視覺模型 gemini-2.5-pro)
+    // 任務 1：圖片辨識 (使用 2.5 Pro，低溫 0.1 確保客觀不亂掰)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
@@ -34,6 +34,7 @@ export default async function handler(req: any, res: any) {
           ]
         },
         config: {
+          temperature: 0.1, // 降低隨機性
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -53,19 +54,20 @@ export default async function handler(req: any, res: any) {
     }
 
     // ==========================================
-    // 任務 2：生成酒記 (使用極速模型 gemini-2.5-flash)
+    // 任務 2：生成酒記 (使用 2.5 Flash，低溫 0.1 確保一致性)
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
-Include vintage performance/recommendations, estimated price in HKD (750ml), and recommended decanting time (if none, state '無需醒酒').
-If unknown, provide generic examples. 
-CRITICAL RULE: ALL descriptions MUST be in authentic Cantonese (粵語白話文). Use terms like '士多啤梨' (strawberry), '車厘子' (cherry), '黑加侖子' (blackcurrant), '單寧' (tannin). Do NOT use standard written Chinese.
+Include vintage performance/recommendations, and recommended decanting time (if none, state '無需醒酒').
+CRITICAL RULE 1: ALL descriptions MUST be in authentic Cantonese (粵語白話文). Use terms like '士多啤梨' (strawberry), '車厘子' (cherry), '黑加侖子' (blackcurrant), '單寧' (tannin).
+CRITICAL RULE 2 (PRICE): For estimatedPriceHKD, you MUST provide a single median price formatted exactly as 'HK$XXXX'. Do NOT provide a price range. Assume 750ml by default and do NOT write '750ml'. Only if the wine is exclusively a special capacity (e.g., 375ml), append it like 'HK$XXXX (375ml)'. Do not include any explanatory text.
 Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese cuisine.
-Analysis Rules: You MUST score the 5 analysis attributes (acidity, sweetness, body, complexity, balance) strictly on a scale of 1 to 10. For example, a dry red wine like Lafite should have very low sweetness (e.g., 1-2).`,
+Analysis Rules: You MUST score the 5 analysis attributes strictly on a scale of 1 to 10. For example, a dry red wine should have very low sweetness (e.g., 1-2).`,
         config: {
+          temperature: 0.1, // 🌟 關鍵修改：極低溫度，鎖死一致性
           systemInstruction: "You are an expert sommelier in Hong Kong. Your tone is elegant and informative. You MUST output ALL descriptions, notes, and pairing suggestions in fluent Cantonese (Traditional Chinese, 粵語白話文).",
           responseMimeType: "application/json",
           responseSchema: {
@@ -76,7 +78,7 @@ Analysis Rules: You MUST score the 5 analysis attributes (acidity, sweetness, bo
               region: { type: Type.STRING },
               countryCode: { type: Type.STRING },
               mapSearchQuery: { type: Type.STRING },
-              estimatedPriceHKD: { type: Type.STRING },
+              estimatedPriceHKD: { type: Type.STRING, description: "Strictly format as 'HK$XXXX'. No ranges. Add '(375ml)' only if not 750ml." },
               grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
               description: { type: Type.STRING, description: "A short, elegant summary of the wine's character in Cantonese (粵語白話文)." },
               wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
@@ -124,7 +126,7 @@ Analysis Rules: You MUST score the 5 analysis attributes (acidity, sweetness, bo
     }
 
     // ==========================================
-    // 任務 3：配餐推薦 (使用極速模型 gemini-2.5-flash)
+    // 任務 3：配餐推薦 (使用 2.5 Flash，高溫 0.8 保持驚喜與多樣性)
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
@@ -139,6 +141,7 @@ c. 匹配度：要求極高。
 d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
 CRITICAL RULE: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).`,
         config: {
+          temperature: 0.8, // 🌟 關鍵修改：高溫，允許 AI 發揮創意
           systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format. The 'reason' field MUST be written in authentic Cantonese (Traditional Chinese, 粵語白話文).",
           responseMimeType: "application/json",
           responseSchema: {
