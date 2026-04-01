@@ -4,7 +4,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 export const maxDuration = 60;
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
+  // 允許 POST (圖片辨識、配餐) 與 GET (搜尋酒款快取)
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
@@ -14,11 +15,14 @@ export default async function handler(req: any, res: any) {
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const { action, payload } = req.body;
+  
+  // 根據請求方法取得參數
+  const action = req.method === 'POST' ? req.body.action : req.query.action;
+  const payload = req.method === 'POST' ? req.body.payload : req.query;
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (使用 2.5 Pro，低溫 0.1 確保客觀不亂掰)
+    // 任務 1：圖片辨識 (POST，不快取)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
@@ -28,13 +32,12 @@ export default async function handler(req: any, res: any) {
           parts: [
             { text: `你是一位專業的侍酒師。請分析這張酒標圖片，綜合酒標上的圖案、Logo、排版與文字，辨識出這是哪一款酒。
 請絕對保持客觀，不要編造圖片中沒有的資訊。如果圖片模糊或缺少某項資訊，請在該欄位填寫 "null"。
-你必須且只能以 JSON 格式輸出結果，不要包含任何其他解釋性文字。
-請忽略進口商、容量、警告標語等無關資訊，只提取能用於精準搜尋的核心酒名、酒莊與年份。如果酒標上沒有明確名稱，請根據視覺特徵推斷最可能的酒莊與酒款。` },
+你必須且只能以 JSON 格式輸出結果，不要包含任何其他解釋性文字。` },
             { inlineData: { data: base64Image, mimeType: mimeType } }
           ]
         },
         config: {
-          temperature: 0.1, // 降低隨機性
+          temperature: 0.1,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -54,21 +57,20 @@ export default async function handler(req: any, res: any) {
     }
 
     // ==========================================
-    // 任務 2：生成酒記 (使用 2.5 Flash，低溫 0.1 確保一致性)
+    // 任務 2：生成酒記 (GET，自動快取 30 天)
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `You are a master sommelier. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
-Include vintage performance/recommendations, and recommended decanting time (if none, state '無需醒酒').
-CRITICAL RULE 1: ALL descriptions MUST be in authentic Cantonese (粵語白話文). Use terms like '士多啤梨' (strawberry), '車厘子' (cherry), '黑加侖子' (blackcurrant), '單寧' (tannin).
-CRITICAL RULE 2 (PRICE): For estimatedPriceHKD, you MUST provide a single median price formatted exactly as 'HK$XXXX'. Do NOT provide a price range. Assume 750ml by default and do NOT write '750ml'. Only if the wine is exclusively a special capacity (e.g., 375ml), append it like 'HK$XXXX (375ml)'. Do not include any explanatory text.
-Food Pairing Rules: Max 8 high-quality suggestions. Prioritize Cantonese/Chinese cuisine.
-Analysis Rules: You MUST score the 5 analysis attributes strictly on a scale of 1 to 10. For example, a dry red wine should have very low sweetness (e.g., 1-2).`,
+        contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
+Include vintage performance/recommendations, and recommended decanting time.
+CRITICAL RULE 1: ALL text fields MUST be in highly authentic Hong Kong Cantonese (純正香港粵語白話文). DO NOT use written Chinese (書面語). Use terms like '士多啤梨', '車厘子', '呢支酒', '好有層次'.
+CRITICAL RULE 2 (PRICE): For estimatedPriceHKD, you MUST provide a single median price formatted exactly as 'HK$XXXX'. No ranges. Assume 750ml. If special capacity, add '(375ml)'.
+Analysis Rules: Score acidity, sweetness, body, complexity, balance strictly on a scale of 1 to 10. Dry wines must have sweetness 1-2.`,
         config: {
-          temperature: 0.1, // 🌟 關鍵修改：極低溫度，鎖死一致性
-          systemInstruction: "You are an expert sommelier in Hong Kong. Your tone is elegant and informative. You MUST output ALL descriptions, notes, and pairing suggestions in fluent Cantonese (Traditional Chinese, 粵語白話文).",
+          temperature: 0.1, 
+          systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions, notes, and pairing suggestions in authentic Hong Kong Cantonese (粵語白話文).",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -78,29 +80,29 @@ Analysis Rules: You MUST score the 5 analysis attributes strictly on a scale of 
               region: { type: Type.STRING },
               countryCode: { type: Type.STRING },
               mapSearchQuery: { type: Type.STRING },
-              estimatedPriceHKD: { type: Type.STRING, description: "Strictly format as 'HK$XXXX'. No ranges. Add '(375ml)' only if not 750ml." },
+              estimatedPriceHKD: { type: Type.STRING, description: "Strictly format as 'HK$XXXX'. No ranges." },
               grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-              description: { type: Type.STRING, description: "A short, elegant summary of the wine's character in Cantonese (粵語白話文)." },
+              description: { type: Type.STRING, description: "Wine summary MUST be in Cantonese (粵語白話文)." },
               wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
               tastingNotes: {
                 type: Type.OBJECT,
                 properties: {
-                  appearance: { type: Type.STRING, description: "Visual characteristics in Cantonese (粵語白話文)." },
-                  aroma: { type: Type.STRING, description: "Olfactory characteristics in Cantonese (粵語白話文)." },
-                  palate: { type: Type.STRING, description: "Taste characteristics in Cantonese (粵語白話文)." },
-                  finish: { type: Type.STRING, description: "The length and nature of the aftertaste in Cantonese (粵語白話文)." }
+                  appearance: { type: Type.STRING, description: "Appearance MUST be in Cantonese (粵語)." },
+                  aroma: { type: Type.STRING, description: "Aroma MUST be in Cantonese (粵語)." },
+                  palate: { type: Type.STRING, description: "Palate MUST be in Cantonese (粵語)." },
+                  finish: { type: Type.STRING, description: "Finish MUST be in Cantonese (粵語)." }
                 },
                 required: ["appearance", "aroma", "palate", "finish"]
               },
               analysis: {
                 type: Type.OBJECT,
-                description: "A numerical analysis of the wine's characteristics on a strict scale of 1 to 10.",
+                description: "Analysis on a strict scale of 1 to 10.",
                 properties: {
-                  acidity: { type: Type.NUMBER, description: "Acidity level (strictly 1-10)" },
-                  sweetness: { type: Type.NUMBER, description: "Sweetness level (strictly 1-10). Dry wines should be 1-2." },
-                  body: { type: Type.NUMBER, description: "Body/Weight level (strictly 1-10)" },
-                  complexity: { type: Type.NUMBER, description: "Complexity level (strictly 1-10)" },
-                  balance: { type: Type.NUMBER, description: "Overall balance level (strictly 1-10)" }
+                  acidity: { type: Type.NUMBER },
+                  sweetness: { type: Type.NUMBER },
+                  body: { type: Type.NUMBER },
+                  complexity: { type: Type.NUMBER },
+                  balance: { type: Type.NUMBER }
                 },
                 required: ["acidity", "sweetness", "body", "complexity", "balance"]
               },
@@ -109,24 +111,30 @@ Analysis Rules: You MUST score the 5 analysis attributes strictly on a scale of 
                 properties: {
                   type: { type: Type.STRING, enum: ['specific', 'general'] },
                   year: { type: Type.STRING },
-                  description: { type: Type.STRING, description: "Description of the vintage performance in Cantonese (粵語白話文)." }
+                  description: { type: Type.STRING, description: "MUST be in Cantonese (粵語)." }
                 },
                 required: ["type", "description"]
               },
               rating: { type: Type.NUMBER },
-              decantingTime: { type: Type.STRING, description: "Recommended decanting time in Cantonese (粵語白話文)." },
-              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Food pairing suggestions in Cantonese (粵語白話文)." }
+              decantingTime: { type: Type.STRING, description: "MUST be in Cantonese (粵語)." },
+              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "MUST be in Cantonese (粵語)." }
             },
             required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "estimatedPriceHKD", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
           }
         }
       });
       const jsonStr = response.text?.trim() || "{}";
+      
+      // 🌟 Vercel 終極魔法：將這份結果在全球 CDN 快取 30 天 (2592000 秒)！
+      if (req.method === 'GET') {
+        res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate');
+      }
+      
       return res.status(200).json(JSON.parse(jsonStr));
     }
 
     // ==========================================
-    // 任務 3：配餐推薦 (使用 2.5 Flash，高溫 0.8 保持驚喜與多樣性)
+    // 任務 3：配餐推薦 (POST，不快取，高溫保持驚喜)
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
@@ -138,10 +146,9 @@ Analysis Rules: You MUST score the 5 analysis attributes strictly on a scale of 
 a. 搜尋範圍：香港本地葡萄酒網店及零售店。
 b. 酒款選擇：盡量推薦不同種類的酒款。
 c. 匹配度：要求極高。
-d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
-CRITICAL RULE: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).`,
+d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。`,
         config: {
-          temperature: 0.8, // 🌟 關鍵修改：高溫，允許 AI 發揮創意
+          temperature: 0.8, // 高溫
           systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format. The 'reason' field MUST be written in authentic Cantonese (Traditional Chinese, 粵語白話文).",
           responseMimeType: "application/json",
           responseSchema: {
