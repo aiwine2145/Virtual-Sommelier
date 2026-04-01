@@ -155,12 +155,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5] selection:bg-wine-900 selection:text-white pb-20 relative overflow-hidden">
-      {/* Global Background Gradient */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,_#6a1a1a_0%,_transparent_75%)] opacity-80 pointer-events-none"></div>
       
-      {/* Header */}
       <header className="pt-16 pb-12 px-6 flex flex-col items-center text-center relative z-10">
-        
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -180,7 +177,6 @@ export default function App() {
           </p>
         </motion.div>
 
-        {/* Search Form */}
         <motion.form 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -242,7 +238,6 @@ export default function App() {
         </motion.form>
       </header>
 
-      {/* Main Content Area */}
       <main className="px-4 md:px-8 max-w-4xl mx-auto">
         <AnimatePresence mode="wait">
           {error && (
@@ -337,7 +332,6 @@ export default function App() {
               transition={{ duration: 0.6, ease: "easeOut" }}
               className="space-y-8"
             >
-              {/* Hero Card */}
               <div className="bg-neutral-900/50 border border-neutral-800/80 rounded-3xl p-8 md:p-10 backdrop-blur-sm relative overflow-hidden flex flex-col md:flex-row gap-8 items-center md:items-start">
                 <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
                   <Wine className="w-64 h-64" />
@@ -353,7 +347,6 @@ export default function App() {
                       {getWineTypeName(wineData.wineType)}
                     </div>
 
-                    {/* Country Flag */}
                     {(wineData.countryCode || getFallbackCountryCode(wineData.region)) && (
                       <div className="absolute top-3 right-3 shadow-lg overflow-hidden rounded-sm border border-white/20 bg-black/20">
                         <img 
@@ -377,8 +370,9 @@ export default function App() {
                         src={`https://maps.google.com/maps?q=${encodeURIComponent(wineData.mapSearchQuery)}&t=&z=13&ie=UTF8&iwloc=&output=embed`}
                         className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0"
                       ></iframe>
+                      {/* 🌟 關鍵修改：動態顯示「酒莊位置」或「產區位置」 */}
                       <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-xs font-medium tracking-wider text-white pointer-events-none">
-                        酒莊位置
+                        {(wineData as any).mapLocationType === 'region' ? '產區位置' : '酒莊位置'}
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
                     </div>
@@ -448,7 +442,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Tasting Notes Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 <div className="bg-neutral-900/30 border border-neutral-800/50 rounded-2xl p-6 hover:bg-neutral-900/50 transition-colors">
                   <div className="flex items-center gap-3 mb-4">
@@ -491,7 +484,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Analysis Radar Chart */}
               {wineData.analysis && (
                 <div className="bg-neutral-900/30 border border-neutral-800/50 rounded-3xl p-8">
                   <div className="flex items-center gap-3 mb-6">
@@ -517,7 +509,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Vintage Notes */}
               {wineData.vintageNotes && (
                 <div className="bg-neutral-900/30 border border-neutral-800/50 rounded-3xl p-8">
                   <div className="flex items-center gap-3 mb-4">
@@ -534,7 +525,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Food Pairings */}
               <div className="bg-neutral-900/30 border border-neutral-800/50 rounded-3xl p-8">
                 <div className="flex items-center gap-3 mb-6">
                   <Utensils className="w-6 h-6 text-wine-400" />

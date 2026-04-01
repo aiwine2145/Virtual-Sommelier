@@ -1,10 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// ⭐️ Vercel 專屬設定：將 Serverless Function 的超時時間延長至 60 秒
 export const maxDuration = 60;
 
 export default async function handler(req: any, res: any) {
-  // 允許 POST (圖片辨識、配餐) 與 GET (搜尋酒款快取)
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -16,13 +14,12 @@ export default async function handler(req: any, res: any) {
 
   const ai = new GoogleGenAI({ apiKey });
   
-  // 根據請求方法取得參數
   const action = req.method === 'POST' ? req.body.action : req.query.action;
   const payload = req.method === 'POST' ? req.body.payload : req.query;
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (POST，不快取，低溫 0.1)
+    // 任務 1：圖片辨識
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
@@ -30,9 +27,7 @@ export default async function handler(req: any, res: any) {
         model: "gemini-2.5-pro", 
         contents: {
           parts: [
-            { text: `你是一位專業的侍酒師。請分析這張酒標圖片，綜合酒標上的圖案、Logo、排版與文字，辨識出這是哪一款酒。
-請絕對保持客觀，不要編造圖片中沒有的資訊。如果圖片模糊或缺少某項資訊，請在該欄位填寫 "null"。
-你必須且只能以 JSON 格式輸出結果，不要包含任何其他解釋性文字。` },
+            { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。請絕對保持客觀，若缺少資訊填寫 "null"。` },
             { inlineData: { data: base64Image, mimeType: mimeType } }
           ]
         },
@@ -57,25 +52,16 @@ export default async function handler(req: any, res: any) {
     }
 
     // ==========================================
-    // 任務 2：生成酒記 (GET，自動快取 30 天，低溫 0.1)
+    // 任務 2：生成酒記 (GET，快取)
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
-Include vintage performance/recommendations, and recommended decanting time.
-CRITICAL RULE 1 (LANGUAGE): ALL text fields MUST be in highly authentic Hong Kong Cantonese (純正香港粵語白話文). DO NOT use written Chinese. Use terms like '士多啤梨', '車厘子', '呢支酒', '好有層次'.
-CRITICAL RULE 2 (PRICE): For estimatedPriceHKD, provide a single median price formatted exactly as 'HK$XXXX'. No ranges. Assume 750ml. If special capacity, add '(375ml)'.
-CRITICAL RULE 3 (RATING): The overall 'rating' MUST be a traditional 100-point scale score (e.g., 85-100). Follow this strict priority: 
-  Priority 1: Use real-world authoritative critic scores (e.g., Robert Parker, James Suckling). 
-  Priority 2: If only Vivino is available, automatically mathematically convert it to the 100-point scale. 
-  Priority 3: If completely unrated, provide a reasonable sommelier estimated score based on its region and estimated price. 
-  DO NOT use a 1-10 scale for the overall rating.
-Analysis Rules: Only for the 5 radar chart attributes (acidity, sweetness, body, complexity, balance), score them strictly on a scale of 1 to 10. Dry wines must have sweetness 1-2.`,
+        contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".`,
         config: {
           temperature: 0.1, 
-          systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions in authentic Hong Kong Cantonese. You MUST use a standard 100-point scale for the overall wine rating following the strict priority rules.",
+          systemInstruction: "You are an expert sommelier in Hong Kong. You MUST output ALL descriptions in authentic Hong Kong Cantonese.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -84,10 +70,12 @@ Analysis Rules: Only for the 5 radar chart attributes (acidity, sweetness, body,
               vintage: { type: Type.STRING },
               region: { type: Type.STRING },
               countryCode: { type: Type.STRING },
-              mapSearchQuery: { type: Type.STRING },
+              // 🌟 修改：精確指示 AI 尋找地圖的方法，並判定是酒莊還是產區
+              mapSearchQuery: { type: Type.STRING, description: "Search query for Google Maps to find the EXACT winery (e.g., 'Château Lafite Rothschild, Pauillac'). ONLY use the region if the specific winery is completely unknown or generic." },
+              mapLocationType: { type: Type.STRING, enum: ['winery', 'region'], description: "Classify if the mapSearchQuery points to a specific 'winery' or just a general 'region'." },
               estimatedPriceHKD: { type: Type.STRING, description: "Strictly format as 'HK$XXXX'. No ranges." },
               grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
-              description: { type: Type.STRING, description: "Wine summary MUST be in Cantonese (粵語白話文)." },
+              description: { type: Type.STRING, description: "Wine summary in Cantonese (粵語)." },
               wineType: { type: Type.STRING, enum: ['red', 'white', 'sparkling', 'champagne', 'rose', 'sweet', 'fortified', 'other'] },
               tastingNotes: {
                 type: Type.OBJECT,
@@ -122,15 +110,15 @@ Analysis Rules: Only for the 5 radar chart attributes (acidity, sweetness, body,
               },
               rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate. DO NOT use a 1-10 scale." },
               decantingTime: { type: Type.STRING, description: "MUST be in Cantonese (粵語)." },
-              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "MUST be in Cantonese (粵語)." }
+              // 🌟 修改：精確指示配餐數量與中菜比例
+              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Provide 4 to 6 highly curated food pairings in Cantonese (粵語). At least 1 or 2 MUST be classic Cantonese/Chinese dishes, but Chinese dishes must NOT exceed 50% of the list. Do not force 8 suggestions if 4-6 are perfect." }
             },
-            required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "estimatedPriceHKD", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
+            required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "mapLocationType", "estimatedPriceHKD", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
           }
         }
       });
       const jsonStr = response.text?.trim() || "{}";
       
-      // 快取 30 天
       if (req.method === 'GET') {
         res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate');
       }
@@ -139,24 +127,16 @@ Analysis Rules: Only for the 5 radar chart attributes (acidity, sweetness, body,
     }
 
     // ==========================================
-    // 任務 3：配餐推薦 (POST，不快取，高溫 0.8)
+    // 任務 3：配餐推薦 (POST)
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。
-使用者輸入的菜色是：${dishName}。
-若菜式有效，請推薦 3 款最適合搭配的葡萄酒，條件如下：
-a. 搜尋範圍：香港本地葡萄酒網店及零售店。
-b. 酒款選擇：盡量推薦不同種類的酒款。
-c. 匹配度：要求極高。
-d. 排除名單：請絕對不要推薦以下酒莊/品牌的酒款：${excludedWineries.join(', ')}。
-CRITICAL RULE 1 (LANGUAGE): The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
-CRITICAL RULE 2 (RATING): For the 'rating' field, you MUST provide a 100-point scale score. Follow this strict priority: 1. Real authoritative scores (e.g., Robert Parker, James Suckling). 2. If only Vivino is available, mathematically convert it to the 100-point scale. 3. If completely unrated, provide a reasonable sommelier estimated score based on its region and estimated price. DO NOT use a 10-point scale.`,
+        contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。`,
         config: {
           temperature: 0.8, 
-          systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format. The 'reason' field MUST be written in authentic Cantonese. You MUST use a standard 100-point scale (85-100) for wine ratings following the authority/Vivino/estimation rules.",
+          systemInstruction: "You are a top sommelier based in Hong Kong. You MUST reply in JSON format.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -174,7 +154,7 @@ CRITICAL RULE 2 (RATING): For the 'rating' field, you MUST provide a 100-point s
                     region: { type: Type.STRING },
                     countryCode: { type: Type.STRING },
                     estimatedPriceHKD: { type: Type.STRING },
-                    rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate. DO NOT use a 1-10 scale." },
+                    rating: { type: Type.NUMBER, description: "Professional score strictly on a 100-point scale based on Authority -> Vivino Conversion -> Region/Price Estimate." },
                     grapeVarieties: { type: Type.ARRAY, items: { type: Type.STRING } },
                     decantingTime: { type: Type.STRING }
                   },
