@@ -19,7 +19,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (加入容錯機制)
+    // 任務 1：圖片辨識 (含 raw_text 容錯機制)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
@@ -44,8 +44,7 @@ export default async function handler(req: any, res: any) {
               grape_variety: { type: Type.STRING, nullable: true },
               region: { type: Type.STRING, nullable: true },
               country: { type: Type.STRING, nullable: true },
-              // 🌟 修改：新增容錯備用欄位
-              raw_text: { type: Type.STRING, nullable: true, description: "如果無法辨識具體酒款，請將圖片上可見的文字（如品牌、產區、字母等）全部抄寫在此欄位作為容錯備用。" }
+              raw_text: { type: Type.STRING, nullable: true, description: "如果無法辨識具體酒款，請將圖片上可見的文字全部抄寫在此欄位作為容錯備用。" }
             }
           }
         }
@@ -117,7 +116,12 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
               },
               rating: { type: Type.NUMBER, description: "100-point scale" },
               decantingTime: { type: Type.STRING, description: "醒酒時間 (粵語)" },
-              foodPairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4-6項配餐, 包含1-2道中菜 (粵語)" }
+              // 🌟 關鍵修改：保留經典中菜，擴充其他菜系，嚴禁籠統字眼，維持佔比不過半
+              foodPairings: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING }, 
+                description: "4-6項『極度具體』的完美配餐。嚴禁使用「牛柳」、「烤羊扒」、「硬芝士」等籠統字眼，必須寫出包含烹調方式的完整菜名(如: 法式芥末烤羊架、慢煮紅酒燉牛面頰)。中式菜餚必須有，但佔比『絕對不可超過總數的一半』。除了黑椒牛柳粒或紅燒乳鴿等經典外，請廣泛考慮潮州菜、客家菜、京菜、上海菜等其他菜系，並確保所有菜色都精準契合該酒款的風味。(粵語)" 
+              }
             },
             required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "mapLocationType", "price", "capacity", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
           }
