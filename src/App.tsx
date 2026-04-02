@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera, ChefHat } from 'lucide-react';
+// 🌟 修改：多引入了 Image as ImageIcon 作為相簿按鈕
+import { Wine, Search, Star, Utensils, Droplets, Wind, Grape, MapPin, Calendar, Loader2, Activity, Tag, Camera, ChefHat, Image as ImageIcon } from 'lucide-react';
 import { generateWineNotes, extractWineInfoFromImage, getWinePairingForDish } from './services/geminiService';
 import { WineData, WinePairing } from './types';
 import { DecantingTimeLogo } from './components/WineCategoryLogo';
@@ -98,17 +99,20 @@ export default function App() {
           if (extractedInfo.winery && extractedInfo.winery !== "null") parts.push(extractedInfo.winery);
           if (extractedInfo.wine_name && extractedInfo.wine_name !== "null") parts.push(extractedInfo.wine_name);
           if (extractedInfo.vintage && extractedInfo.vintage !== "null") parts.push(extractedInfo.vintage);
-          if (extractedInfo.region && extractedInfo.region !== "null") parts.push(extractedInfo.region);
-          if (extractedInfo.country && extractedInfo.country !== "null") parts.push(extractedInfo.country);
           
-          const newQuery = parts.join(' ');
+          let newQuery = parts.join(' ');
           
-          if (newQuery) {
+          // 🌟 容錯機制：如果拆解不出具體酒款，就用 AI 辨識出的「碎片化文字 (raw_text)」去搜尋
+          if (!newQuery.trim() && extractedInfo.raw_text && extractedInfo.raw_text !== "null") {
+            newQuery = extractedInfo.raw_text;
+          }
+          
+          if (newQuery.trim()) {
             setQuery(newQuery);
             const data = await generateWineNotes(newQuery);
             setWineData(data);
           } else {
-            setError("無法從圖片中辨識出酒款資訊，請重新拍攝或手動輸入。");
+            setError("圖片過於模糊或反光，無法辨識出酒標文字，請重新拍攝或手動輸入。");
           }
         } catch (err) {
           console.error(err);
@@ -132,6 +136,8 @@ export default function App() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processImageFile(file);
+    // 重置 input value 以允許重複上傳同一張照片
+    e.target.value = '';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -204,32 +210,48 @@ export default function App() {
             </button>
           </div>
           <div className="relative flex items-center">
+            {/* 調整了 padding-right (pr) 讓右邊有足夠空間放三個 icon */}
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchMode === 'wine' ? (isDragging ? "放開以分析酒標圖片..." : "例如：Château Margaux 2015, Opus One...") : "例如：北京填鴨, 壽司, 芝士漢堡..."}
-              className={`w-full bg-neutral-900/80 border rounded-full py-4 pl-6 pr-24 text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-wine-600 focus:border-wine-600 transition-all backdrop-blur-md ${isDragging ? 'border-wine-500' : 'border-neutral-800'}`}
+              placeholder={searchMode === 'wine' ? (isDragging ? "放開以分析酒標圖片..." : "例如：Château Margaux 2015...") : "例如：北京填鴨, 壽司, 芝士漢堡..."}
+              className={`w-full bg-neutral-900/80 border rounded-full py-4 pl-6 pr-32 text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-wine-600 focus:border-wine-600 transition-all backdrop-blur-md ${isDragging ? 'border-wine-500' : 'border-neutral-800'}`}
               disabled={isLoading}
             />
-            <div className="absolute right-2 flex items-center gap-1">
+            <div className="absolute right-2 flex items-center gap-0.5">
               {searchMode === 'wine' && (
-                <label className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isLoading ? 'opacity-50 pointer-events-none text-neutral-500' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    capture="environment"
-                    className="hidden" 
-                    onChange={handleImageUpload}
-                    disabled={isLoading}
-                  />
-                  <Camera className="w-5 h-5" />
-                </label>
+                <>
+                  {/* 🌟 修改：相機按鈕 (帶 capture="environment" 強制開啟鏡頭) */}
+                  <label className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isLoading ? 'opacity-50 pointer-events-none text-neutral-500' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`} title="拍照認酒">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="environment"
+                      className="hidden" 
+                      onChange={handleImageUpload}
+                      disabled={isLoading}
+                    />
+                    <Camera className="w-4 h-4" />
+                  </label>
+                  
+                  {/* 🌟 修改：相簿上傳按鈕 (不帶 capture，讓用戶挑選照片) */}
+                  <label className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isLoading ? 'opacity-50 pointer-events-none text-neutral-500' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`} title="上傳相片">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleImageUpload}
+                      disabled={isLoading}
+                    />
+                    <ImageIcon className="w-4 h-4" />
+                  </label>
+                </>
               )}
               <button
                 type="submit"
                 disabled={isLoading || !query.trim()}
-                className="w-10 h-10 rounded-full bg-wine-800 hover:bg-wine-700 disabled:bg-neutral-800 disabled:text-neutral-500 flex items-center justify-center text-white transition-colors"
+                className="w-10 h-10 ml-1 rounded-full bg-wine-800 hover:bg-wine-700 disabled:bg-neutral-800 disabled:text-neutral-500 flex items-center justify-center text-white transition-colors"
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
               </button>

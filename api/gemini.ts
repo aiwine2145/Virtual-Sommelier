@@ -19,7 +19,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識
+    // 任務 1：圖片辨識 (加入容錯機制)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
@@ -27,7 +27,8 @@ export default async function handler(req: any, res: any) {
         model: "gemini-2.5-pro", 
         contents: {
           parts: [
-            { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。請絕對保持客觀，若缺少資訊填寫 "null"。` },
+            { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。
+請盡量提取具體欄位。如果圖片因光線暗、微距模糊等原因無法確認確切酒莊或酒名，請盡力將酒標上『任何可見的文字』轉錄到 raw_text 欄位中，不要輕易放棄。` },
             { inlineData: { data: base64Image, mimeType: mimeType } }
           ]
         },
@@ -43,6 +44,8 @@ export default async function handler(req: any, res: any) {
               grape_variety: { type: Type.STRING, nullable: true },
               region: { type: Type.STRING, nullable: true },
               country: { type: Type.STRING, nullable: true },
+              // 🌟 修改：新增容錯備用欄位
+              raw_text: { type: Type.STRING, nullable: true, description: "如果無法辨識具體酒款，請將圖片上可見的文字（如品牌、產區、字母等）全部抄寫在此欄位作為容錯備用。" }
             }
           }
         }
