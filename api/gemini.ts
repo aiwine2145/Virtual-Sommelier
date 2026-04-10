@@ -1,6 +1,33 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Vercel 專屬設定：將超時時間延長至 60 秒 (確保有足夠時間進行重試)
 export const maxDuration = 60;
+
+// 🛡️ 企業級防護罩：固定延遲重試機制 (Fixed Delay Retry)
+async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, maxRetries: number = 2) {
+  const delay = 2000; // 固定等待 2 秒 (2000 毫秒)
+  let attempts = 0; // 記錄目前的重試次數
+  
+  while (attempts <= maxRetries) {
+    try {
+      // 嘗試呼叫 AI
+      return await ai.models.generateContent(requestParams);
+    } catch (error: any) {
+      attempts++; // 失敗次數 +1
+      const status = error?.status || error?.response?.status;
+      
+      // 捕捉常見的塞車錯誤：503 (服務不可用)、429 (請求過多)、500 (內部伺服器錯誤)
+      if ((status === 503 || status === 429 || status === 500) && attempts <= maxRetries) {
+        console.warn(`[AI 伺服器塞車 - 錯誤代碼 ${status}] 啟動防禦機制，等待 2 秒後進行第 ${attempts} 次重試...`);
+        // 固定暫停 2 秒鐘
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // 如果不是塞車問題，或是已經重試了 2 次還是失敗，就果斷放棄，把錯誤丟給前端
+        throw error;
+      }
+    }
+  }
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -23,7 +50,8 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
-      const response = await ai.models.generateContent({
+      // 🛡️ 套用重試機制
+      const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-pro", 
         contents: {
           parts: [
@@ -49,7 +77,7 @@ export default async function handler(req: any, res: any) {
           }
         }
       });
-      const jsonStr = response.text?.trim() || "{}";
+      const jsonStr = response?.text?.trim() || "{}";
       return res.status(200).json(JSON.parse(jsonStr));
     }
 
@@ -58,7 +86,8 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
-      const response = await ai.models.generateContent({
+      // 🛡️ 套用重試機制
+      const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
@@ -116,7 +145,6 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
               },
               rating: { type: Type.NUMBER, description: "100-point scale" },
               decantingTime: { type: Type.STRING, description: "醒酒時間 (粵語)" },
-              // 🌟 關鍵修改：保留經典中菜，擴充其他菜系，嚴禁籠統字眼，維持佔比不過半
               foodPairings: { 
                 type: Type.ARRAY, 
                 items: { type: Type.STRING }, 
@@ -127,7 +155,7 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
           }
         }
       });
-      const jsonStr = response.text?.trim() || "{}";
+      const jsonStr = response?.text?.trim() || "{}";
       
       if (req.method === 'GET') {
         res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate');
@@ -141,7 +169,8 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
-      const response = await ai.models.generateContent({
+      // 🛡️ 套用重試機制
+      const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
 CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
@@ -180,7 +209,7 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
           }
         }
       });
-      const jsonStr = response.text?.trim() || "{}";
+      const jsonStr = response?.text?.trim() || "{}";
       return res.status(200).json(JSON.parse(jsonStr));
     }
 
