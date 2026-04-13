@@ -1,9 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Vercel 專屬設定：將超時時間延長至 60 秒 (確保有足夠時間進行重試與備援)
+// Vercel 專屬設定：將超時時間延長至 60 秒 (確保有足夠時間進行重試)
 export const maxDuration = 60;
 
-// 🛡️ 企業級防護罩：遞增延遲 + 自動降級絕對鎖定備援 (Pinned Fallback)
+// 🛡️ 企業級防護罩：純粹的遞增延遲重試 (不隨便切換模型)
 async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, maxRetries: number = 3) {
   let delay = 2000; // 初始等待 2 秒
   let attempts = 0;
@@ -20,22 +20,11 @@ async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, max
       if ((status === 503 || status === 429 || status === 500) && attempts <= maxRetries) {
         console.warn(`[AI 伺服器繁忙 - 狀態碼 ${status}] 等待 ${delay/1000} 秒後進行第 ${attempts} 次重試...`);
         
-        // 🌟 殺手鐧：如果是最後一次重試，給予系統「絕對鎖定」的實體版號！
-        if (attempts === maxRetries) {
-           console.warn(`[自動備援啟動] 2.5 模型持續塞車，強制降級至絕對鎖定版 1.5-002 模型進行最終嘗試！`);
-           // 使用絕對存在的實體編號，徹底消滅 404
-           if (requestParams.model === 'gemini-2.5-pro') {
-               requestParams.model = 'gemini-1.5-pro-002';
-           } else if (requestParams.model === 'gemini-2.5-flash') {
-               requestParams.model = 'gemini-1.5-flash-002';
-           }
-        }
-
         // 暫停執行
         await new Promise(resolve => setTimeout(resolve, delay));
         delay += 1000; // 讓等待時間慢慢變長 (2s -> 3s -> 4s) 以增加命中率
       } else {
-        // 如果不是塞車問題，或是其他錯誤，果斷放棄並把錯誤丟給前端
+        // 如果重試 3 次還是失敗，或是遇到其他錯誤，把錯誤往外丟，交給最下方的系統處理
         throw error;
       }
     }
@@ -61,12 +50,12 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (拍照認酒)
+    // 任務 1：圖片辨識 (拍照認酒) - 👑 使用最強大腦 3.1 Pro
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-2.5-pro", 
+        model: "gemini-3.1-pro", 
         contents: {
           parts: [
             { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。
@@ -96,12 +85,12 @@ export default async function handler(req: any, res: any) {
     }
 
     // ==========================================
-    // 任務 2：生成酒記 (品酒筆記)
+    // 任務 2：生成酒記 (品酒筆記) - ⚡ 使用極速王者 3 Flash
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-2.5-flash",
+        model: "gemini-3-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
 CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
@@ -178,12 +167,12 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     }
 
     // ==========================================
-    // 任務 3：配餐推薦 (菜配酒)
+    // 任務 3：配餐推薦 (菜配酒) - ⚡ 使用極速王者 3 Flash
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-2.5-flash",
+        model: "gemini-3-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
 CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
 CRITICAL RULE 2: Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
@@ -229,6 +218,15 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
 
   } catch (error: any) {
     console.error("Vercel API 錯誤:", error);
+    
+    // 🌟 優雅錯誤處理：如果連重試 3 次都失敗，回傳友善的 503 給前端
+    const errStatus = error?.status || error?.response?.status;
+    if (errStatus === 503 || errStatus === 429) {
+       return res.status(503).json({ 
+         error: "目前品酒師極度忙碌 (Google 伺服器滿載)，已為您嘗試多次連線仍無法擠入，請稍等十秒後再試一次！" 
+       });
+    }
+    
     return res.status(500).json({ error: error.message || "內部伺服器錯誤" });
   }
 }
