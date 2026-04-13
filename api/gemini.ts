@@ -1,6 +1,4 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import fs from 'fs';
-import path from 'path';
 
 // Vercel 專屬設定：將超時時間延長至 60 秒
 export const maxDuration = 60;
@@ -17,6 +15,7 @@ async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, max
       attempts++;
       const status = error?.status || error?.response?.status;
       
+      // 捕捉 503 塞車，啟動自動重試
       if ((status === 503 || status === 429 || status === 500) && attempts <= maxRetries) {
         console.warn(`[AI 伺服器繁忙 - 狀態碼 ${status}] 啟動防禦機制，等待 2 秒後進行第 ${attempts} 次重試...`);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -32,38 +31,18 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // 🔑 使用穩定且高權限的 Tier 1 API Key
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: '伺服器設定錯誤：遺失 GEMINI_API_KEY' });
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const action = req.method === 'POST' ? req.body.action : req.query.action;
+  const payload = req.method === 'POST' ? req.body.payload : req.query;
+
   try {
-    // ==========================================
-    // 🌟 企業級 Vertex AI 初始化設定 (Vercel 專用寫法)
-    // ==========================================
-    const credentialsStr = process.env.GCP_CREDENTIALS;
-    const projectId = process.env.GCP_PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
-
-    if (!credentialsStr || !projectId) {
-      return res.status(500).json({ error: '伺服器設定錯誤：遺失 GCP 環境變數 (Credentials 或 Project ID)' });
-    }
-
-    // 關鍵解法：將環境變數中的 JSON 字串寫入 Vercel 的 /tmp 暫存目錄
-    const keyPath = path.join('/tmp', 'gcp-key.json');
-    if (!fs.existsSync(keyPath)) {
-      fs.writeFileSync(keyPath, credentialsStr);
-    }
-    
-    // 告訴 Google 原生系統去這個路徑讀取企業識別證
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
-
-    // 建立 Vertex AI 專用實體 (系統會自動抓取上面的檔案路徑)
-    const ai = new GoogleGenAI({
-      vertexai: {
-        project: projectId,
-        location: location,
-      }
-    });
-
-    const action = req.method === 'POST' ? req.body.action : req.query.action;
-    const payload = req.method === 'POST' ? req.body.payload : req.query;
-
     // ==========================================
     // 任務 1：圖片辨識 (含 raw_text 容錯機制)
     // ==========================================
