@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { GoogleAuth } from "google-auth-library"; // 🌟 新增：企業級身分驗證套件
+import fs from 'fs';
+import path from 'path';
 
 // Vercel 專屬設定：將超時時間延長至 60 秒
 export const maxDuration = 60;
@@ -33,7 +34,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 🌟 企業級 Vertex AI 初始化設定
+    // 🌟 企業級 Vertex AI 初始化設定 (Vercel 專用寫法)
     // ==========================================
     const credentialsStr = process.env.GCP_CREDENTIALS;
     const projectId = process.env.GCP_PROJECT_ID;
@@ -43,17 +44,21 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: '伺服器設定錯誤：遺失 GCP 環境變數 (Credentials 或 Project ID)' });
     }
 
-    // 解析 JSON 企業識別證
-    const credentials = JSON.parse(credentialsStr);
-    const auth = new GoogleAuth({ credentials });
+    // 關鍵解法：將環境變數中的 JSON 字串寫入 Vercel 的 /tmp 暫存目錄
+    const keyPath = path.join('/tmp', 'gcp-key.json');
+    if (!fs.existsSync(keyPath)) {
+      fs.writeFileSync(keyPath, credentialsStr);
+    }
+    
+    // 告訴 Google 原生系統去這個路徑讀取企業識別證
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
 
-    // 建立 Vertex AI 專用實體
+    // 建立 Vertex AI 專用實體 (系統會自動抓取上面的檔案路徑)
     const ai = new GoogleGenAI({
       vertexai: {
         project: projectId,
         location: location,
-      },
-      auth: auth,
+      }
     });
 
     const action = req.method === 'POST' ? req.body.action : req.query.action;
