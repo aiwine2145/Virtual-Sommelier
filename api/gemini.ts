@@ -1,28 +1,25 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleAuth } from "google-auth-library"; // 🌟 新增：企業級身分驗證套件
 
-// Vercel 專屬設定：將超時時間延長至 60 秒 (確保有足夠時間進行重試)
+// Vercel 專屬設定：將超時時間延長至 60 秒
 export const maxDuration = 60;
 
 // 🛡️ 企業級防護罩：固定延遲重試機制 (Fixed Delay Retry)
 async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, maxRetries: number = 2) {
-  const delay = 2000; // 固定等待 2 秒 (2000 毫秒)
-  let attempts = 0; // 記錄目前的重試次數
+  const delay = 2000; // 固定等待 2 秒
+  let attempts = 0;
   
   while (attempts <= maxRetries) {
     try {
-      // 嘗試呼叫 AI
       return await ai.models.generateContent(requestParams);
     } catch (error: any) {
-      attempts++; // 失敗次數 +1
+      attempts++;
       const status = error?.status || error?.response?.status;
       
-      // 捕捉常見的塞車錯誤：503 (服務不可用)、429 (請求過多)、500 (內部伺服器錯誤)
       if ((status === 503 || status === 429 || status === 500) && attempts <= maxRetries) {
-        console.warn(`[AI 伺服器塞車 - 錯誤代碼 ${status}] 啟動防禦機制，等待 2 秒後進行第 ${attempts} 次重試...`);
-        // 固定暫停 2 秒鐘
+        console.warn(`[AI 伺服器繁忙 - 狀態碼 ${status}] 啟動防禦機制，等待 2 秒後進行第 ${attempts} 次重試...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
-        // 如果不是塞車問題，或是已經重試了 2 次還是失敗，就果斷放棄，把錯誤丟給前端
         throw error;
       }
     }
@@ -34,23 +31,39 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-  
-  const action = req.method === 'POST' ? req.body.action : req.query.action;
-  const payload = req.method === 'POST' ? req.body.payload : req.query;
-
   try {
+    // ==========================================
+    // 🌟 企業級 Vertex AI 初始化設定
+    // ==========================================
+    const credentialsStr = process.env.GCP_CREDENTIALS;
+    const projectId = process.env.GCP_PROJECT_ID;
+    const location = process.env.GCP_LOCATION || 'us-central1';
+
+    if (!credentialsStr || !projectId) {
+      return res.status(500).json({ error: '伺服器設定錯誤：遺失 GCP 環境變數 (Credentials 或 Project ID)' });
+    }
+
+    // 解析 JSON 企業識別證
+    const credentials = JSON.parse(credentialsStr);
+    const auth = new GoogleAuth({ credentials });
+
+    // 建立 Vertex AI 專用實體
+    const ai = new GoogleGenAI({
+      vertexai: {
+        project: projectId,
+        location: location,
+      },
+      auth: auth,
+    });
+
+    const action = req.method === 'POST' ? req.body.action : req.query.action;
+    const payload = req.method === 'POST' ? req.body.payload : req.query;
+
     // ==========================================
     // 任務 1：圖片辨識 (含 raw_text 容錯機制)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
-      // 🛡️ 套用重試機制
       const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-pro", 
         contents: {
@@ -86,7 +99,6 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
-      // 🛡️ 套用重試機制
       const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
@@ -169,7 +181,6 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
-      // 🛡️ 套用重試機制
       const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
@@ -213,10 +224,10 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
       return res.status(200).json(JSON.parse(jsonStr));
     }
 
-    return res.status(400).json({ error: 'Invalid action specified' });
+    return res.status(400).json({ error: '無效的操作指令' });
 
   } catch (error: any) {
-    console.error("Vercel API Error:", error);
-    return res.status(500).json({ error: error.message || "Internal Server Error" });
+    console.error("Vercel API 錯誤:", error);
+    return res.status(500).json({ error: error.message || "內部伺服器錯誤" });
   }
 }
