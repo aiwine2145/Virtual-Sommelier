@@ -3,28 +3,26 @@ import { GoogleGenAI, Type } from "@google/genai";
 // Vercel 專屬設定：將超時時間延長至 60 秒 (確保有足夠時間進行重試)
 export const maxDuration = 60;
 
-// 🛡️ 企業級防護罩：純粹的遞增延遲重試 (不隨便切換模型)
-async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, maxRetries: number = 3) {
-  let delay = 2000; // 初始等待 2 秒
-  let attempts = 0;
+// 🛡️ 企業級防護罩：固定延遲重試機制 (Fixed Delay Retry)
+async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, maxRetries: number = 2) {
+  const delay = 2000; // 固定等待 2 秒 (2000 毫秒)
+  let attempts = 0; // 記錄目前的重試次數
   
   while (attempts <= maxRetries) {
     try {
       // 嘗試呼叫 AI
       return await ai.models.generateContent(requestParams);
     } catch (error: any) {
-      attempts++;
+      attempts++; // 失敗次數 +1
       const status = error?.status || error?.response?.status;
       
       // 捕捉常見的塞車錯誤：503 (服務不可用)、429 (請求過多)、500 (內部伺服器錯誤)
       if ((status === 503 || status === 429 || status === 500) && attempts <= maxRetries) {
-        console.warn(`[AI 伺服器繁忙 - 狀態碼 ${status}] 等待 ${delay/1000} 秒後進行第 ${attempts} 次重試...`);
-        
-        // 暫停執行
+        console.warn(`[AI 伺服器塞車 - 錯誤代碼 ${status}] 啟動防禦機制，等待 2 秒後進行第 ${attempts} 次重試...`);
+        // 固定暫停 2 秒鐘
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay += 1000; // 讓等待時間慢慢變長 (2s -> 3s -> 4s) 以增加命中率
       } else {
-        // 如果重試 3 次還是失敗，或是遇到其他錯誤，把錯誤往外丟，交給最下方的系統處理
+        // 如果不是塞車問題，或是已經重試了 2 次還是失敗，就果斷放棄，把錯誤丟給前端
         throw error;
       }
     }
@@ -32,15 +30,13 @@ async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, max
 }
 
 export default async function handler(req: any, res: any) {
-  // 只允許 POST 與 GET 請求
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // 🔑 使用穩定且高權限的 Tier 1 API Key
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: '伺服器設定錯誤：遺失 GEMINI_API_KEY 環境變數' });
+    return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -50,12 +46,13 @@ export default async function handler(req: any, res: any) {
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (拍照認酒) - 👑 使用最強大腦 3.1 Pro
+    // 任務 1：圖片辨識 (含 raw_text 容錯機制)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
+      // 🛡️ 套用重試機制
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-3.1-pro", 
+        model: "gemini-2.5-pro", 
         contents: {
           parts: [
             { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。
@@ -85,12 +82,13 @@ export default async function handler(req: any, res: any) {
     }
 
     // ==========================================
-    // 任務 2：生成酒記 (品酒筆記) - ⚡ 使用極速王者 3 Flash
+    // 任務 2：生成酒記 (GET，快取)
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
+      // 🛡️ 套用重試機制
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-3-flash",
+        model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
 CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
@@ -167,12 +165,13 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     }
 
     // ==========================================
-    // 任務 3：配餐推薦 (菜配酒) - ⚡ 使用極速王者 3 Flash
+    // 任務 3：配餐推薦 (POST)
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
+      // 🛡️ 套用重試機制
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-3-flash",
+        model: "gemini-2.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
 CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
 CRITICAL RULE 2: Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
@@ -214,19 +213,10 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
       return res.status(200).json(JSON.parse(jsonStr));
     }
 
-    return res.status(400).json({ error: '無效的操作指令' });
+    return res.status(400).json({ error: 'Invalid action specified' });
 
   } catch (error: any) {
-    console.error("Vercel API 錯誤:", error);
-    
-    // 🌟 優雅錯誤處理：如果連重試 3 次都失敗，回傳友善的 503 給前端
-    const errStatus = error?.status || error?.response?.status;
-    if (errStatus === 503 || errStatus === 429) {
-       return res.status(503).json({ 
-         error: "目前品酒師極度忙碌 (Google 伺服器滿載)，已為您嘗試多次連線仍無法擠入，請稍等十秒後再試一次！" 
-       });
-    }
-    
-    return res.status(500).json({ error: error.message || "內部伺服器錯誤" });
+    console.error("Vercel API Error:", error);
+    return res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 }
