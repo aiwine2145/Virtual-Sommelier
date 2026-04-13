@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 // Vercel 專屬設定：將超時時間延長至 60 秒 (確保有足夠時間進行重試與備援)
 export const maxDuration = 60;
 
-// 🛡️ 企業級防護罩：遞增延遲 + 自動降級備援 (Fallback)
+// 🛡️ 企業級防護罩：遞增延遲 + 自動降級精準備援 (Fallback)
 async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, maxRetries: number = 3) {
   let delay = 2000; // 初始等待 2 秒
   let attempts = 0;
@@ -20,17 +20,22 @@ async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, max
       if ((status === 503 || status === 429 || status === 500) && attempts <= maxRetries) {
         console.warn(`[AI 伺服器繁忙 - 狀態碼 ${status}] 等待 ${delay/1000} 秒後進行第 ${attempts} 次重試...`);
         
-        // 🌟 殺手鐧：如果是最後一次重試，且目前用的是 2.5 模型，自動降級切換至 1.5 穩定版！
-        if (attempts === maxRetries && requestParams.model.includes('2.5')) {
+        // 🌟 殺手鐧：如果是最後一次重試，精準指定 1.5 的最新穩定版本！
+        if (attempts === maxRetries) {
            console.warn(`[自動備援啟動] 2.5 模型持續塞車，強制降級至穩定版 1.5 模型進行最終嘗試！`);
-           requestParams.model = requestParams.model.replace('2.5', '1.5');
+           // 針對新版 API 的嚴格要求，必須補上 -latest 後綴
+           if (requestParams.model === 'gemini-2.5-pro') {
+               requestParams.model = 'gemini-1.5-pro-latest';
+           } else if (requestParams.model === 'gemini-2.5-flash') {
+               requestParams.model = 'gemini-1.5-flash-latest';
+           }
         }
 
         // 暫停執行
         await new Promise(resolve => setTimeout(resolve, delay));
         delay += 1000; // 讓等待時間慢慢變長 (2s -> 3s -> 4s) 以增加命中率
       } else {
-        // 如果不是塞車問題，或是重試次數用盡，果斷放棄並把錯誤丟給前端
+        // 如果不是塞車問題，或是 404 等其他錯誤，果斷放棄並把錯誤丟給前端
         throw error;
       }
     }
@@ -60,7 +65,7 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
-      // 🛡️ 套用防護罩 (初始使用 2.5-pro，塞車自動降級 1.5-pro)
+      // 🛡️ 套用防護罩 (初始使用 2.5-pro，塞車自動降級 1.5-pro-latest)
       const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-pro", 
         contents: {
@@ -96,7 +101,7 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
-      // 🛡️ 套用防護罩 (初始使用 2.5-flash，塞車自動降級 1.5-flash)
+      // 🛡️ 套用防護罩 (初始使用 2.5-flash，塞車自動降級 1.5-flash-latest)
       const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
@@ -179,7 +184,7 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
-      // 🛡️ 套用防護罩 (初始使用 2.5-flash，塞車自動降級 1.5-flash)
+      // 🛡️ 套用防護罩 (初始使用 2.5-flash，塞車自動降級 1.5-flash-latest)
       const response = await generateContentWithRetry(ai, {
         model: "gemini-2.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
