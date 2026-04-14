@@ -74,7 +74,8 @@ export default async function handler(req: Request) {
       return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 });
     }
   } else {
-    const { searchParams } = new URL(req.url);
+    // 🛠️ 修正點：加入 'http://localhost' 作為 fallback base URL，防止 Vercel 傳入相對路徑時導致 Invalid URL 崩潰
+    const { searchParams } = new URL(req.url, 'http://localhost');
     action = searchParams.get('action');
     // 將 query 轉換為物件，模擬原本的 req.query
     payload = Object.fromEntries(searchParams.entries());
