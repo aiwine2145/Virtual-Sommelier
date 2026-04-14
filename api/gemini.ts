@@ -1,94 +1,29 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// 🚀 強制使用 Edge Runtime 以獲得最好的防超時效能與串流支援
-export const runtime = 'edge';
+export const maxDuration = 60;
 
-// 🛡️ 企業級防護罩：指數退避 + 隨機抖動 + 瀑布式模型降級
-async function generateContentWithRetry(ai: GoogleGenAI, requestParams: any, fallbackModels: string[] = []) {
-  let attempts = 0;
-  // 最大重試次數取決於提供了多少個備用模型
-  const maxAttempts = fallbackModels.length; 
-  let currentModel = requestParams.model;
-
-  while (attempts <= maxAttempts) {
-    try {
-      // 確保每次請求使用的是當前決定的模型
-      const currentParams = { ...requestParams, model: currentModel };
-      return await ai.models.generateContent(currentParams);
-    } catch (error: any) {
-      const status = error?.status || error?.response?.status;
-      
-      // 捕捉 503 (服務不可用)、429 (請求過多) 或 500 (伺服器錯誤)
-      if ((status === 503 || status === 429 || status === 500) && attempts < maxAttempts) {
-        attempts++;
-        
-        // 【優化 1：指數退避與隨機抖動】
-        const baseDelay = Math.pow(2, attempts) * 1000;
-        const jitter = Math.random() * 1000;
-        const delay = baseDelay + jitter;
-        
-        // 【優化 2：模型瀑布降級】
-        currentModel = fallbackModels[attempts - 1];
-        
-        console.warn(`[AI 塞車防護 - 錯誤 ${status}] 等待 ${(delay/1000).toFixed(2)} 秒後，系統自動降級至 ${currentModel} 進行重試...`);
-        
-        // 暫停執行指定的時間
-        await new Promise(resolve => setTimeout(resolve, delay));
-      } else {
-        // 如果不是塞車問題，或所有備用模型都已陣亡，則果斷放棄
-        throw error;
-      }
-    }
-  }
-}
-
-// ⚠️ 注意：Edge Runtime 使用標準的 Request / Response 物件
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { 
-      status: 405, 
-      headers: { 'Content-Type': 'application/json' } 
-    });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server configuration error: Missing API Key' }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' } 
-    });
+    return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
   }
 
   const ai = new GoogleGenAI({ apiKey });
   
-  let action;
-  let payload: any;
-
-  // 根據 GET 或 POST 解析 Payload (Edge Runtime 寫法)
-  if (req.method === 'POST') {
-    try {
-      const body = await req.json();
-      action = body.action;
-      payload = body.payload;
-    } catch (e) {
-      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 });
-    }
-  } else {
-    // 🛠️ 修正點：加入 'http://localhost' 作為 fallback base URL，防止 Vercel 傳入相對路徑時導致 Invalid URL 崩潰
-    const { searchParams } = new URL(req.url, 'http://localhost');
-    action = searchParams.get('action');
-    // 將 query 轉換為物件，模擬原本的 req.query
-    payload = Object.fromEntries(searchParams.entries());
-  }
+  const action = req.method === 'POST' ? req.body.action : req.query.action;
+  const payload = req.method === 'POST' ? req.body.payload : req.query;
 
   try {
     // ==========================================
-    // 任務 1：圖片辨識 (含 raw_text 容錯與降級機制)
+    // 任務 1：圖片辨識 (含 raw_text 容錯機制)
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
-      
-      const response = await generateContentWithRetry(ai, {
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-pro", 
         contents: {
           parts: [
@@ -113,13 +48,9 @@ export default async function handler(req: Request) {
             }
           }
         }
-      }, ["gemini-2.5-flash", "gemini-1.5-pro"]); 
-
-      const jsonStr = response?.text?.trim() || "{}";
-      return new Response(JSON.stringify(JSON.parse(jsonStr)), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
       });
+      const jsonStr = response.text?.trim() || "{}";
+      return res.status(200).json(JSON.parse(jsonStr));
     }
 
     // ==========================================
@@ -127,8 +58,7 @@ export default async function handler(req: Request) {
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
-      
-      const response = await generateContentWithRetry(ai, {
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
@@ -186,6 +116,7 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
               },
               rating: { type: Type.NUMBER, description: "100-point scale" },
               decantingTime: { type: Type.STRING, description: "醒酒時間 (粵語)" },
+              // 🌟 關鍵修改：保留經典中菜，擴充其他菜系，嚴禁籠統字眼，維持佔比不過半
               foodPairings: { 
                 type: Type.ARRAY, 
                 items: { type: Type.STRING }, 
@@ -195,19 +126,14 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
             required: ["wineName", "vintage", "region", "countryCode", "mapSearchQuery", "mapLocationType", "price", "capacity", "grapeVarieties", "description", "wineType", "tastingNotes", "analysis", "vintageNotes", "rating", "decantingTime", "foodPairings"]
           }
         }
-      }, ["gemini-1.5-flash", "gemini-1.5-flash-8b"]); 
-
-      const jsonStr = response?.text?.trim() || "{}";
+      });
+      const jsonStr = response.text?.trim() || "{}";
       
-      const headers = new Headers({ 'Content-Type': 'application/json' });
       if (req.method === 'GET') {
-        headers.set('Cache-Control', 's-maxage=2592000, stale-while-revalidate');
+        res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate');
       }
       
-      return new Response(JSON.stringify(JSON.parse(jsonStr)), {
-        status: 200,
-        headers: headers
-      });
+      return res.status(200).json(JSON.parse(jsonStr));
     }
 
     // ==========================================
@@ -215,8 +141,7 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
-      
-      const response = await generateContentWithRetry(ai, {
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
 CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
@@ -254,25 +179,15 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
             }
           }
         }
-      }, ["gemini-1.5-flash", "gemini-1.5-flash-8b"]); 
-
-      const jsonStr = response?.text?.trim() || "{}";
-      return new Response(JSON.stringify(JSON.parse(jsonStr)), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
       });
+      const jsonStr = response.text?.trim() || "{}";
+      return res.status(200).json(JSON.parse(jsonStr));
     }
 
-    return new Response(JSON.stringify({ error: 'Invalid action specified' }), { 
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return res.status(400).json({ error: 'Invalid action specified' });
 
   } catch (error: any) {
-    console.error("Vercel Edge API Error:", error);
-    return new Response(JSON.stringify({ error: error.message || "Internal Server Error" }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    console.error("Vercel API Error:", error);
+    return res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 }
