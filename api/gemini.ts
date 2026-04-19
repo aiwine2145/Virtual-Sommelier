@@ -24,7 +24,7 @@ export default async function handler(req: any, res: any) {
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro", 
+        model: "gemini-2.5-flash",
         contents: {
           parts: [
             { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。
@@ -188,6 +188,15 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
 
   } catch (error: any) {
     console.error("Vercel API Error:", error);
-    return res.status(500).json({ error: error.message || "Internal Server Error" });
+    const status = error?.status ?? error?.httpStatus ?? 500;
+    const isOverload = status === 503 || error?.message?.includes('overloaded') || error?.message?.includes('unavailable');
+    const isTimeout = error?.message?.includes('timeout') || error?.message?.includes('deadline');
+    if (isOverload) {
+      return res.status(503).json({ error: 'AI service temporarily unavailable. Please retry in a moment.', retryable: true });
+    }
+    if (isTimeout) {
+      return res.status(504).json({ error: 'Request timed out. Please try again.', retryable: true });
+    }
+    return res.status(status >= 400 && status < 600 ? status : 500).json({ error: error.message || "Internal Server Error", retryable: false });
   }
 }
