@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 export const maxDuration = 60;
 
 const PRIMARY_MODEL = "gemini-2.5-flash";
-const FALLBACK_MODEL = "gemini-2.0-flash";
+const FALLBACK_MODEL = "gemini-2.5-flash-lite";
 
 function isRetryableError(error: any): boolean {
   const status = error?.status ?? error?.httpStatus ?? 0;
