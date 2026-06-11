@@ -2,40 +2,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export const maxDuration = 60;
 
-const PRIMARY_MODEL = "gemini-2.5-flash";
-const FALLBACK_MODEL = "gemini-2.5-flash-lite";
-
-function isRetryableError(error: any): boolean {
-  const status = error?.status ?? error?.httpStatus ?? 0;
-  return status === 503 || status === 429 ||
-    error?.message?.includes('overloaded') ||
-    error?.message?.includes('UNAVAILABLE') ||
-    error?.message?.includes('unavailable') ||
-    error?.message?.includes('timeout') ||
-    error?.message?.includes('deadline');
-}
-
-async function generateWithFallback(ai: GoogleGenAI, params: any): Promise<any> {
-  const models = [PRIMARY_MODEL, FALLBACK_MODEL];
-  for (const model of models) {
-    const isLastModel = model === FALLBACK_MODEL;
-    for (let attempt = 0; attempt <= 1; attempt++) {
-      try {
-        return await ai.models.generateContent({ ...params, model });
-      } catch (error: any) {
-        const shouldRetry = isRetryableError(error);
-        if (!shouldRetry) throw error;
-        if (attempt === 0) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          continue;
-        }
-        if (!isLastModel) break;
-        throw error;
-      }
-    }
-  }
-}
-
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -46,8 +12,15 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+  
   const action = req.method === 'POST' ? req.body.action : req.query.action;
   const payload = req.method === 'POST' ? req.body.payload : req.query;
 
@@ -57,7 +30,8 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'extract') {
       const { base64Image, mimeType } = payload;
-      const response = await generateWithFallback(ai, {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash", 
         contents: {
           parts: [
             { text: `你是一位專業的侍酒師。請分析這張酒標圖片，辨識出這是哪一款酒。
@@ -91,7 +65,8 @@ export default async function handler(req: any, res: any) {
     // ==========================================
     if (action === 'notes') {
       const { wineName } = payload;
-      const response = await generateWithFallback(ai, {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
         contents: `You are a master sommelier in Hong Kong. Provide detailed tasting notes, rating, and food pairings for: "${wineName}".
 CRITICAL RULE 1: ALL descriptions MUST be in authentic Hong Kong Cantonese.
 CRITICAL RULE 2 (PRICE): Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
@@ -173,7 +148,8 @@ CRITICAL RULE 5 (DECANTING): Factor in age, grape, and tier. Premium structured 
     // ==========================================
     if (action === 'pairing') {
       const { dishName, excludedWineries } = payload;
-      const response = await generateWithFallback(ai, {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
         contents: `你是一位常駐香港的頂級侍酒師。使用者會提供一道菜名，請你推薦幾款最適合搭配的葡萄酒。使用者輸入的菜色是：${dishName}。排除名單：${excludedWineries.join(', ')}。
 CRITICAL RULE 1: The recommendation reasons MUST be written in authentic Cantonese (粵語白話文).
 CRITICAL RULE 2: Calculate the AVERAGE of the LOWEST available prices from Wine-Searcher and Vivino. Output the number only in 'price' (HKD).
@@ -219,15 +195,6 @@ CRITICAL RULE 3: For 'rating', provide a 100-point scale score.`,
 
   } catch (error: any) {
     console.error("Vercel API Error:", error);
-    const status = error?.status ?? error?.httpStatus ?? 500;
-    const isOverload = status === 503 || error?.message?.includes('overloaded') || error?.message?.includes('unavailable');
-    const isTimeout = error?.message?.includes('timeout') || error?.message?.includes('deadline');
-    if (isOverload) {
-      return res.status(503).json({ error: 'AI service temporarily unavailable. Please retry in a moment.', retryable: true });
-    }
-    if (isTimeout) {
-      return res.status(504).json({ error: 'Request timed out. Please try again.', retryable: true });
-    }
-    return res.status(status >= 400 && status < 600 ? status : 500).json({ error: error.message || "Internal Server Error", retryable: false });
+    return res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 }
